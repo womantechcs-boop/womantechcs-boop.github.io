@@ -312,7 +312,7 @@ nav a .dot{display:inline-block;width:8px;height:8px;border-radius:50%;backgroun
 
 <script>
 "use strict";
-var APP_VERSION="1.2.0";
+var APP_VERSION="1.2.1";
 var WEB_URL="https://womantechcs-boop.github.io/channel-radar/";
 /* ================= 저장소 (이 컴퓨터의 브라우저에만 저장) ================= */
 var LS={
@@ -529,6 +529,8 @@ async function fetchChannel(q,status){
   }
   if(!ids.length)throw new Error("유튜브에서 '"+q+"' 채널을 찾지 못했습니다. 핸들(@이름)이나 채널 주소를 다시 확인해 주세요.");
   await loadChannels(ids,{},status);
+  // 한글 핸들처럼 채널 이름과 다른 말로 찾았을 때도 다음부터 그 말로 검색되게 기억해 둔다
+  if(ids.length===1&&DB[ids[0]]){var c=DB[ids[0]];c.alias=c.alias||[];if(c.alias.indexOf(q)<0&&c.alias.length<5)c.alias.push(q)}
   return ids.length;
 }
 var busy=false;
@@ -596,8 +598,9 @@ function channelRows(list){
 }
 
 /* ---------- HOT 채널 ---------- */
+function norm(x){var t=String(x||"");try{t=decodeURIComponent(t)}catch(e){}return t.toLowerCase().replace(/https?:\/\/(www\.)?youtube\.com\/(channel\/)?/g,"").replace(/[@\s]/g,"")}
 function hotList(){
-  var f=st.hot,q=f.q.trim().toLowerCase();
+  var f=st.hot,q=norm(f.q);
   return sortList(channels().filter(function(c){
     if(!match(c,f))return false;
     var s=c.subs;
@@ -609,7 +612,7 @@ function hotList(){
       if(f.subs==="D"&&(s<1e5||s>=1e6))return false;
       if(f.subs==="E"&&s<1e6)return false;
     }
-    if(q&&(c.name+" "+c.handle).toLowerCase().indexOf(q)<0)return false;
+    if(q&&norm(c.name+" "+c.handle+" "+c.id+" "+(c.alias||[]).join(" ")).indexOf(q)<0)return false;
     return true;
   }));
 }
