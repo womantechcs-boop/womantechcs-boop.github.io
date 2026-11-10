@@ -313,7 +313,7 @@ nav a .dot{display:inline-block;width:8px;height:8px;border-radius:50%;backgroun
 
 <script>
 "use strict";
-var APP_VERSION="1.2.2";
+var APP_VERSION="1.2.3";
 var WEB_URL="https://womantechcs-boop.github.io/channel-radar/";
 /* ================= 저장소 (이 컴퓨터의 브라우저에만 저장) ================= */
 var LS={
@@ -516,7 +516,7 @@ async function collectKeyword(q,region,days,status){
   return Object.keys(ids).length;
 }
 async function fetchChannel(q,status){
-  q=String(q).trim();var ids=[],m;
+  q=String(q).trim();var ids=[],m,bySearch=false;
   status("'"+q+"' 채널 찾는 중");
   if((m=/(UC[\w-]{22})/.exec(q)))ids=[m[1]];
   else if((m=/@([^\s\/?#]+)/.exec(q))||(m=/^([A-Za-z0-9._-]{3,30})$/.exec(q))){
@@ -525,13 +525,16 @@ async function fetchChannel(q,status){
     ids=(j.items||[]).map(function(x){return x.id});
   }
   if(!ids.length){
+    bySearch=true;
     var sj=await api("search",{part:"snippet",type:"channel",q:q.replace(/^@/,""),maxResults:5},100);
     ids=(sj.items||[]).map(function(x){return (x.id&&x.id.channelId)||(x.snippet&&x.snippet.channelId)}).filter(Boolean);
   }
   if(!ids.length)throw new Error("유튜브에서 '"+q+"' 채널을 찾지 못했습니다. 핸들(@이름)이나 채널 주소를 다시 확인해 주세요.");
   await loadChannels(ids,{},status);
   // 한글 핸들처럼 채널 이름과 다른 말로 찾았을 때도 다음부터 그 말로 검색되게 기억해 둔다
-  if(ids.length===1&&DB[ids[0]]){var c=DB[ids[0]];c.alias=c.alias||[];if(c.alias.indexOf(q)<0&&c.alias.length<5)c.alias.push(q)}
+  // 검색으로 찾은 후보들도 같은 검색어로 목록에 보이게 한다
+  ids.forEach(function(id){var c=DB[id];if(!c)return;c.alias=c.alias||[];if(c.alias.indexOf(q)<0&&c.alias.length<5)c.alias.push(q)});
+  if(bySearch)setTimeout(function(){toast("핸들로 바로 찾지 못해 이름이 비슷한 채널 "+ids.length+"개를 불러왔습니다. 내 채널이 없으면 영문 핸들이나 채널 주소로 다시 해 보세요.")},400);
   return ids.length;
 }
 var busy=false;
