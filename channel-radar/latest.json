@@ -1,6 +1,6 @@
 {
-  "version": "1.3.7",
+  "version": "1.3.8",
   "url": "index.html",
-  "sha256": "349991a06d2cb31ed39e31cbdbc0e849d9b363c242760ec463a03ce0a7baa1af",
-  "notes": "인기 채널 가져오기에 '전체(23개국)' 추가, 완료 안내 문구 정리"
+  "sha256": "4c77970008c4ec6e61116ccf5a9654191ac8e10b9ffb7a04d6e33e4bc4a1c992",
+  "notes": "블랙 화면을 한 단계 밝은 남색 톤으로 조정, 상단 메뉴 배경 수정"
 }
