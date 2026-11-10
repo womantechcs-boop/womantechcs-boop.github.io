@@ -1,4 +1,4 @@
-const {app,BrowserWindow,shell,Menu,ipcMain,net}=require('electron');
+const {app,BrowserWindow,shell,Menu,ipcMain,net,dialog}=require('electron');
 const path=require('path'),fs=require('fs'),crypto=require('crypto');
 const {spawn}=require('child_process');
 
@@ -22,7 +22,9 @@ async function get(url){
 // 소리 처리 부분의 격리(샌드박스)를 끄고 프로그램 본체에서 직접 소리를 낸다
 // 소리 방식 0: 기본 / 1: 소리 처리 격리 끄기 / 2: 프로그램 본체에서 직접 소리 내기
 // '소리 테스트'에서 소리 장치가 켜지지 않으면 다음 방식으로 바꿔 다시 시작한다
-const SHELL=3;
+const SHELL=4;
+// 문제가 생기면 조용히 꺼지지 않고 이유를 보여 준다
+process.on('uncaughtException',(e)=>{try{dialog.showErrorBox('채널 레이더 오류',String(e&&e.stack||e))}catch(_){}});
 const SET_FILE=path.join(app.getPath('userData'),'shell-settings.json');
 let audioMode=0;
 try{audioMode=Math.max(0,Math.min(2,JSON.parse(fs.readFileSync(SET_FILE,'utf8')).audioMode|0))}catch(e){}
@@ -31,7 +33,6 @@ if(audioMode===1)app.commandLine.appendSwitch('disable-features','AudioServiceSa
 if(audioMode===2)app.commandLine.appendSwitch('disable-features','AudioServiceSandbox,AudioServiceOutOfProcess');
 app.commandLine.appendSwitch('autoplay-policy','no-user-gesture-required');
 
-if(!app.requestSingleInstanceLock()){app.quit()}
 let win=null,readyTimer=null;
 let browserPref='chrome';
 // 크롬이 깔려 있으면 크롬으로, 없으면 윈도우 기본 브라우저로 연다
@@ -79,7 +80,8 @@ ipcMain.handle('radar:info',()=>({shell:SHELL,electron:process.versions.electron
 ipcMain.handle('radar:audio-next',()=>{
   if(audioMode>=2){audioMode=0;saveSettings();return {ok:false,mode:0}}
   audioMode++;saveSettings();
-  setTimeout(()=>{app.relaunch();app.exit(0)},1500);
+  // 다시 켜지는 새 창이 '이미 실행 중'으로 막히지 않도록 잠금을 먼저 푼다
+  setTimeout(()=>{try{app.releaseSingleInstanceLock()}catch(e){} app.relaunch();app.exit(0)},1500);
   return {ok:true,mode:audioMode};
 });
 ipcMain.on('radar:ready',()=>{clearTimeout(readyTimer)});
@@ -118,5 +120,11 @@ ipcMain.handle('radar:apply',async()=>{
 });
 
 app.on('second-instance',()=>{if(win){if(win.isMinimized())win.restore();win.focus()}});
-app.whenReady().then(create);
+// 한 번에 하나만 실행. 방금 꺼진 창이 아직 정리 중일 수 있어 3초까지 기다렸다가 연다
+let lockTries=0;
+(function getLock(){
+  if(app.requestSingleInstanceLock()){app.whenReady().then(create);return}
+  if(++lockTries>10){app.quit();return}
+  setTimeout(getLock,300);
+})();
 app.on('window-all-closed',()=>app.quit());
