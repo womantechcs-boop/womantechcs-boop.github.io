@@ -313,7 +313,7 @@ nav a .dot{display:inline-block;width:8px;height:8px;border-radius:50%;backgroun
 
 <script>
 "use strict";
-var APP_VERSION="1.3.12";
+var APP_VERSION="1.3.13";
 var WEB_URL="https://womantechcs-boop.github.io/channel-radar/";
 /* ================= 저장소 (이 컴퓨터의 브라우저에만 저장) ================= */
 var LS={
@@ -490,6 +490,8 @@ function calc(c){
   var cnt={},cat=0,best=0;vids.forEach(function(v){if(!v.c)return;cnt[v.c]=(cnt[v.c]||0)+1;if(cnt[v.c]>best){best=cnt[v.c];cat=v.c}});
   return {vids:vids,avg:avg,ratio:(c.subs>0&&avg!=null)?avg/c.subs:null,week:week,daily:daily,real:real,cat:cat?(CAT[cat]||"기타"):"분류 없음"};
 }
+// 수집 도중에 새로 들어온 채널도 화면에서 바로 계산해 쓸 수 있게 한다
+function met(id){return M[id]||(M[id]=calc(DB[id]||{id:id}))}
 function rebuild(){M={};channels().forEach(function(c){M[c.id]=calc(c)})}
 
 /* ================= 유튜브 API ================= */
@@ -661,18 +663,18 @@ function opts(list,sel){return list.map(function(o){return '<option value="'+esc
 function sel(p,k,label,list){return '<label class="f"><span>'+label+'</span><select data-p="'+p+'" data-k="'+k+'">'+opts(list,st[p][k])+'</select></label>'}
 function countBy(fn){var m={};channels().forEach(function(c){var ks=fn(c);(Array.isArray(ks)?ks:[ks]).forEach(function(k){if(k)m[k]=(m[k]||0)+1})});return Object.keys(m).sort(function(a,b){return m[b]-m[a]})}
 function countryOpts(){return [["ALL","전체"]].concat(countBy(function(c){return c.country}).map(function(k){return [k,cname(k)]}))}
-function catOpts(){return [["ALL","전체"]].concat(countBy(function(c){return M[c.id].cat}).map(function(k){return [k,k]}))}
+function catOpts(){return [["ALL","전체"]].concat(countBy(function(c){return met(c.id).cat}).map(function(k){return [k,k]}))}
 function tagOpts(){return [["ALL","전체"]].concat(countBy(function(c){return c.tags||[]}).map(function(k){return [k,k]}))}
 function match(c,f){
   if(f.country!=="ALL"&&c.country!==f.country)return false;
-  if(f.cat&&f.cat!=="ALL"&&M[c.id].cat!==f.cat)return false;
+  if(f.cat&&f.cat!=="ALL"&&met(c.id).cat!==f.cat)return false;
   if(f.tag&&f.tag!=="ALL"&&(c.tags||[]).indexOf(f.tag)<0)return false;
   return true;
 }
 function noData(){return '<div class="card empty">아직 수집한 채널이 없습니다. <a href="#collect">데이터 수집·설정</a>에서 먼저 채널을 가져와 주세요.</div>'}
 
 /* ---------- 채널 줄 ---------- */
-var SORTS={subs:function(c){return c.subs},daily:function(c){return M[c.id].daily},ratio:function(c){return M[c.id].ratio},week:function(c){return M[c.id].week},age:function(c){return c.created}};
+var SORTS={subs:function(c){return c.subs},daily:function(c){return met(c.id).daily},ratio:function(c){return met(c.id).ratio},week:function(c){return met(c.id).week},age:function(c){return c.created}};
 function sortList(l){
   var k=SORTS[st.hot.sort],d=st.hot.dir;
   return l.sort(function(a,b){var x=k(a),y=k(b);if(x==null&&y==null)return 0;if(x==null)return 1;if(y==null)return -1;return (x-y)*d});
@@ -685,7 +687,7 @@ function channelRows(list){
   if(!list.length)return bar+'<div class="card empty">조건에 맞는 채널이 없습니다. 필터를 넓혀 보세요.</div>';
   var shown=list.slice(0,st.hot.limit);
   return bar+'<div class="card rows"><div class="chead"><span>채널 정보</span><span>구독자</span><span>최근 업로드 콘텐츠</span><span>영상 수</span><span>조회수 증감</span><span></span></div>'+shown.map(function(c,i){
-    var m=M[c.id];
+    var m=met(c.id);
     var tiles=m.vids.slice(0,5).map(function(v){return '<a class="tile" href="'+vurl(v)+'" target="_blank" rel="noopener" title="'+esc(v.t)+'" style="background-image:url('+vthumb(v)+')"><span>'+fmt(v.v)+'</span></a>'}).join("");
     var tags='<span class="tg a">'+esc(m.cat)+'</span>'+(c.tags||[]).slice(0,3).map(function(t){return '<span class="tg b">'+esc(t)+'</span>'}).join("")+'<span class="tg">'+esc(cname(c.country))+'</span>';
     return '<div class="crow" data-ch="'+esc(c.id)+'">'+
@@ -719,7 +721,7 @@ function hotList(){
 }
 function drawHot(){
   var l=hotList();
-  $("#hotSummary").innerHTML='<span>찾은 채널 <b>'+l.length.toLocaleString("ko-KR")+'</b>개</span><span>배수 3 이상 <b>'+l.filter(function(c){return M[c.id].ratio>=3}).length+'</b>개</span><span>배수 = 최근 영상 5개 평균 조회수 ÷ 구독자 수</span>';
+  $("#hotSummary").innerHTML='<span>찾은 채널 <b>'+l.length.toLocaleString("ko-KR")+'</b>개</span><span>배수 3 이상 <b>'+l.filter(function(c){return met(c.id).ratio>=3}).length+'</b>개</span><span>배수 = 최근 영상 5개 평균 조회수 ÷ 구독자 수</span>';
   var q=st.hot.q.trim();
   $("#hotList").innerHTML=(q?'<div class="addbar"><span>찾는 채널이 목록에 없나요? 목록에는 수집해 둔 채널만 나옵니다.</span><button type="button" class="btn" data-act="fetch-ch">유튜브에서 \''+esc(q)+'\' 불러오기</button></div>':'')+channelRows(l);
 }
@@ -745,8 +747,8 @@ function renderFavorites(){
 function renderRanking(){
   if(!Object.keys(DB).length){view.innerHTML='<h1>일일 조회수 랭킹</h1>'+noData();curDraw=function(){};return}
   curDraw=function(){
-    var l=channels().filter(function(c){return match(c,st.rank)&&M[c.id].daily!=null}).sort(function(a,b){return M[b.id].daily-M[a.id].daily}).slice(0,30);
-    $("#rankList").innerHTML=l.length?'<div class="card rk">'+l.map(function(c,i){var m=M[c.id];
+    var l=channels().filter(function(c){return match(c,st.rank)&&met(c.id).daily!=null}).sort(function(a,b){return met(b.id).daily-met(a.id).daily}).slice(0,30);
+    $("#rankList").innerHTML=l.length?'<div class="card rk">'+l.map(function(c,i){var m=met(c.id);
       return '<div class="row" data-ch="'+esc(c.id)+'"><span class="n">'+(i+1)+'</span>'+avatar(c)+'<div><div style="font-weight:600">'+esc(c.name)+'</div><div class="meta">'+esc(cname(c.country))+' · '+esc(m.cat)+' · 구독자 '+(c.subs==null?"비공개":fmt(c.subs))+'</div></div><span class="gain">'+dailyHtml(m)+'</span></div>'}).join("")+'</div>'
       :'<div class="card empty">조건에 맞는 채널이 없습니다.</div>';
   };
@@ -787,10 +789,10 @@ function renderKeywords(){
   curDraw=function(){
     var l=weekly(),max=l.length?l[0].views:1;
     $("#kwList").innerHTML=l.length?'<div class="card kw">'+l.map(function(k,i){
-      var open=st.kw.open===k.word,ids=Object.keys(k.chs).sort(function(a,b){return (M[b].ratio||0)-(M[a].ratio||0)});
+      var open=st.kw.open===k.word,ids=Object.keys(k.chs).sort(function(a,b){return (met(b).ratio||0)-(met(a).ratio||0)});
       var h='<div class="row'+(open?" open":"")+'" data-kw="'+esc(k.word)+'" role="button" tabindex="0" aria-expanded="'+open+'"><span class="n">'+(i+1)+'</span><span class="word">'+esc(k.word)+'<small>채널 '+ids.length+'개 '+(open?"▴":"▾")+'</small></span><div class="bar"><span style="width:'+(k.views/max*100).toFixed(0)+'%"></span></div><span class="kwv">'+fmt(k.views)+'회</span></div>';
       if(open)h+='<div class="kwch"><h3>제목에 \''+esc(k.word)+'\'가 들어간 영상을 최근 7일 안에 올린 채널 · 배수 높은 순</h3>'+ids.map(function(id){var c=DB[id],v=k.chs[id][0];
-        return '<div class="krow" data-ch="'+esc(id)+'">'+avatar(c)+'<div class="kn"><b>'+esc(c.name)+'</b><small>'+esc(v.t)+' · 조회수 '+fmt(v.v)+'</small></div>'+pill(M[id].ratio)+'<span class="g">구독자 '+(c.subs==null?"비공개":fmt(c.subs))+'</span></div>'}).join("")+'</div>';
+        return '<div class="krow" data-ch="'+esc(id)+'">'+avatar(c)+'<div class="kn"><b>'+esc(c.name)+'</b><small>'+esc(v.t)+' · 조회수 '+fmt(v.v)+'</small></div>'+pill(met(id).ratio)+'<span class="g">구독자 '+(c.subs==null?"비공개":fmt(c.subs))+'</span></div>'}).join("")+'</div>';
       return h}).join("")+'</div>'
       :'<div class="card empty">최근 7일 안에 올라온 영상에서 여러 채널이 함께 쓴 단어가 아직 없습니다. 채널을 더 수집해 보세요.</div>';
   };
@@ -817,7 +819,7 @@ function renderVideos(){
     l.sort(function(a,b){return b.score-a.score});
     $("#vidSummary").innerHTML='<span>영상 <b>'+l.length+'</b>개'+(l.length>48?' 중 상위 48개 표시':'')+'</span>';
     $("#vidGrid").innerHTML=l.length?'<div class="grid">'+l.slice(0,48).map(function(x){var c=x.c,v=x.v;
-      return '<div class="card vid"><a class="thumb" href="'+vurl(v)+'" target="_blank" rel="noopener" style="background-image:url('+vthumb(v)+')" aria-label="'+esc(v.t)+' 유튜브에서 열기"><span class="tag">'+esc(M[c.id].cat)+'</span><span class="tag">'+(x.short?"쇼츠":"롱폼")+'</span></a>'+
+      return '<div class="card vid"><a class="thumb" href="'+vurl(v)+'" target="_blank" rel="noopener" style="background-image:url('+vthumb(v)+')" aria-label="'+esc(v.t)+' 유튜브에서 열기"><span class="tag">'+esc(met(c.id).cat)+'</span><span class="tag">'+(x.short?"쇼츠":"롱폼")+'</span></a>'+
        '<div class="body"><a class="t" href="'+vurl(v)+'" target="_blank" rel="noopener">'+esc(v.t)+'</a><div class="m"><button type="button" class="linkbtn" data-ch="'+esc(c.id)+'">'+esc(c.name)+'</button>'+pill(c.subs>0?v.v/c.subs:null)+'</div><div class="m"><span>조회수 '+fmt(v.v)+'</span><span>'+ago(v.p)+'</span></div></div></div>'}).join("")+'</div>'
       :'<div class="card empty">조건에 맞는 영상이 없습니다. 기간이나 분류를 넓혀 보세요.</div>';
   };
@@ -862,6 +864,7 @@ var ROUTES={hot:renderHot,ranking:renderRanking,keywords:renderKeywords,videos:r
 function route(){
   var r=(location.hash||"").slice(1);
   cur=ROUTES[r]?r:(KEY&&Object.keys(DB).length?"hot":"collect");
+  if(busy)rebuild();          // 수집 중에 다른 화면으로 가도 지금까지 받은 내용으로 다시 계산
   Array.prototype.forEach.call(document.querySelectorAll("#nav a"),function(a){a.classList.toggle("on",a.dataset.r===cur)});
   ROUTES[cur]();
 }
@@ -869,7 +872,7 @@ function route(){
 /* ================= 채널 상세 ================= */
 var drawer=$("#drawer"),shade=$("#shade"),openId=null;
 function openDrawer(id){
-  var c=DB[id];if(!c)return;openId=id;var m=M[id];
+  var c=DB[id];if(!c)return;openId=id;var m=met(id);
   drawer.innerHTML='<div class="head">'+avatar(c)+'<div><h3>'+esc(c.name)+'</h3><div class="meta">'+esc(c.handle)+' · '+esc(cname(c.country))+' · '+esc(m.cat)+'</div></div><button class="x" type="button" data-act="close">닫기</button></div>'+
    '<div class="stats"><div class="stat key"><span>구독자 대비 배수</span><b>'+(m.ratio==null?"–":"×"+m.ratio.toFixed(1))+'</b></div><div class="stat"><span>일일 조회수'+(m.real?"":" (추정)")+'</span><b>'+fmt(m.daily)+'</b></div>'+
    '<div class="stat"><span>구독자</span><b>'+(c.subs==null?"비공개":fmt(c.subs))+'</b></div><div class="stat"><span>최근 영상 평균 조회수</span><b>'+fmt(m.avg)+'</b></div>'+
