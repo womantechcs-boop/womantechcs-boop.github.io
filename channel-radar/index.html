@@ -313,7 +313,7 @@ nav a .dot{display:inline-block;width:8px;height:8px;border-radius:50%;backgroun
 
 <script>
 "use strict";
-var APP_VERSION="1.3.8";
+var APP_VERSION="1.3.9";
 var WEB_URL="https://womantechcs-boop.github.io/channel-radar/";
 /* ================= 저장소 (이 컴퓨터의 브라우저에만 저장) ================= */
 var LS={
@@ -326,18 +326,24 @@ var FAV=LS.get("cr.fav",{});
 var QUOTA=LS.get("cr.quota",{day:"",used:0,search:0});
 var SOUND=LS.get("cr.sound",true),BROWSER=LS.get("cr.browser","chrome"),upd=null;
 var clickUrl=null,soundErr="",soundMsg="";
+function clickWave(sr){
+  var len=Math.floor(sr*0.11),d=new Float32Array(len),seed=12345,prev=0,i;
+  for(i=0;i<len;i++){
+    seed=(seed*1103515245+12345)&0x7fffffff;var r=seed/0x3fffffff-1;prev=0.6*r+0.4*prev;
+    var t=i/sr,t2=t-0.05,x=0;
+    if(t<0.02)x+=prev*Math.exp(-t*380)*0.9+Math.sin(2*Math.PI*3200*t)*Math.exp(-t*300)*0.45;      // 딸
+    if(t2>=0&&t2<0.035)x+=prev*Math.exp(-t2*260)*0.75+Math.sin(2*Math.PI*2100*t2)*Math.exp(-t2*220)*0.45; // 깍
+    d[i]=Math.max(-1,Math.min(1,x));
+  }
+  return d;
+}
 // 딸깍 소리를 직접 만들어(WAV) 일반 오디오로 재생한다
 function makeClick(){
-  var sr=22050,len=Math.floor(sr*0.14),buf=new ArrayBuffer(44+len*2),v=new DataView(buf),i;
+  var sr=22050,wave=clickWave(sr),len=wave.length,buf=new ArrayBuffer(44+len*2),v=new DataView(buf),i;
   function w(o,str){for(var k=0;k<str.length;k++)v.setUint8(o+k,str.charCodeAt(k))}
   w(0,"RIFF");v.setUint32(4,36+len*2,true);w(8,"WAVE");w(12,"fmt ");v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
   v.setUint32(24,sr,true);v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,"data");v.setUint32(40,len*2,true);
-  for(i=0;i<len;i++){
-    var t=i/sr,x=0,t2=t-0.06;
-    if(t<0.05)x+=Math.sin(2*Math.PI*2300*t)*Math.exp(-t*110)*0.9;
-    if(t2>=0)x+=Math.sin(2*Math.PI*1400*t2)*Math.exp(-t2*80)*0.85;
-    v.setInt16(44+i*2,Math.round(Math.max(-1,Math.min(1,x))*32767),true);
-  }
+  for(i=0;i<len;i++)v.setInt16(44+i*2,Math.round(wave[i]*32767),true);
   var bin="",u=new Uint8Array(buf);for(i=0;i<u.length;i++)bin+=String.fromCharCode(u[i]);
   return "data:audio/wav;base64,"+btoa(bin);
 }
@@ -348,11 +354,7 @@ function wakeAudio(){
     var AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
     if(!actx){
       actx=new AC();
-      var sr=actx.sampleRate,len=Math.floor(sr*0.16),i;clickBuf=actx.createBuffer(1,len,sr);var d=clickBuf.getChannelData(0);
-      for(i=0;i<len;i++){var t=i/sr,x=0,t2=t-0.07;
-        if(t<0.06)x+=Math.sin(2*Math.PI*1800*t)*Math.exp(-t*90)*0.9;
-        if(t2>=0)x+=Math.sin(2*Math.PI*1100*t2)*Math.exp(-t2*70)*0.85;
-        d[i]=Math.max(-1,Math.min(1,x))}
+      var sr=actx.sampleRate,wave=clickWave(sr);clickBuf=actx.createBuffer(1,wave.length,sr);clickBuf.getChannelData(0).set(wave);
       var keep=actx.createOscillator(),kg=actx.createGain();keep.frequency.value=30;kg.gain.value=0.0002;keep.connect(kg);kg.connect(actx.destination);keep.start();
     }
     if(actx.state!=="running")actx.resume();
@@ -884,11 +886,11 @@ document.addEventListener("click",function(e){
     else if(act==="fetch-ch"){var fq=st.hot.q.trim();if(fq)run("채널 불러오기",function(status){return fetchChannel(fq,status)})}
     else if(act==="browser"){BROWSER=id==="default"?"default":"chrome";LS.set("cr.browser",BROWSER);if(window.radar&&window.radar.setBrowser)window.radar.setBrowser(BROWSER);renderCollect()}
     else if(act==="sound"){SOUND=!SOUND;LS.set("cr.sound",SOUND);soundMsg="";clickSound();renderCollect()}
-    else if(act==="sound-test"){clickSound(true);beep();setTimeout(function(){
+    else if(act==="sound-test"){clickSound(true);setTimeout(function(){clickSound(true)},450);setTimeout(function(){
       var okDev=actx&&actx.state==="running";
       var done=function(m){soundMsg=m;if(cur==="collect")renderCollect()};
       if(soundErr)done("소리를 재생하지 못했습니다: "+soundErr);
-      else if(okDev)done("'딸깍' 소리 뒤에 '삐-' 소리를 0.5초 동안 재생했습니다. 소리 장치는 정상적으로 켜졌습니다. 안 들렸다면 스피커 음량과 윈도우 '볼륨 믹서'를 확인해 주세요.");
+      else if(okDev)done("'딸깍' 소리를 두 번 재생했습니다. 소리 장치는 정상적으로 켜졌습니다. 안 들렸다면 스피커 음량과 윈도우 '볼륨 믹서'를 확인해 주세요.");
       else done("이 컴퓨터에서는 프로그램이 소리 장치를 켜지 못해 효과음이 나지 않습니다. 프로그램의 다른 기능은 그대로 쓸 수 있습니다.");
     },1500)}
     else if(act==="check-update"){checkUpdate(false)}
