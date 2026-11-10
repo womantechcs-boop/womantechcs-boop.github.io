@@ -20,7 +20,15 @@ async function get(url){
 
 // 일부 윈도우 컴퓨터에서 소리가 윈도우까지 전달되지 않는 문제 대응:
 // 소리 처리 부분의 격리(샌드박스)를 끄고 프로그램 본체에서 직접 소리를 낸다
-app.commandLine.appendSwitch('disable-features','AudioServiceSandbox,AudioServiceOutOfProcess');
+// 소리 방식 0: 기본 / 1: 소리 처리 격리 끄기 / 2: 프로그램 본체에서 직접 소리 내기
+// '소리 테스트'에서 소리 장치가 켜지지 않으면 다음 방식으로 바꿔 다시 시작한다
+const SHELL=3;
+const SET_FILE=path.join(app.getPath('userData'),'shell-settings.json');
+let audioMode=0;
+try{audioMode=Math.max(0,Math.min(2,JSON.parse(fs.readFileSync(SET_FILE,'utf8')).audioMode|0))}catch(e){}
+function saveSettings(){try{fs.mkdirSync(path.dirname(SET_FILE),{recursive:true});fs.writeFileSync(SET_FILE,JSON.stringify({audioMode}))}catch(e){}}
+if(audioMode===1)app.commandLine.appendSwitch('disable-features','AudioServiceSandbox');
+if(audioMode===2)app.commandLine.appendSwitch('disable-features','AudioServiceSandbox,AudioServiceOutOfProcess');
 app.commandLine.appendSwitch('autoplay-policy','no-user-gesture-required');
 
 if(!app.requestSingleInstanceLock()){app.quit()}
@@ -67,6 +75,13 @@ function create(){
 }
 
 ipcMain.on('radar:browser',(e,v)=>{browserPref=v==='default'?'default':'chrome'});
+ipcMain.handle('radar:info',()=>({shell:SHELL,electron:process.versions.electron,audioMode}));
+ipcMain.handle('radar:audio-next',()=>{
+  if(audioMode>=2){audioMode=0;saveSettings();return {ok:false,mode:0}}
+  audioMode++;saveSettings();
+  setTimeout(()=>{app.relaunch();app.exit(0)},1500);
+  return {ok:true,mode:audioMode};
+});
 ipcMain.on('radar:ready',()=>{clearTimeout(readyTimer)});
 ipcMain.handle('radar:check',async(e,cur)=>{
   try{const j=await (await get(BASE+'latest.json')).json();
