@@ -313,7 +313,7 @@ nav a .dot{display:inline-block;width:8px;height:8px;border-radius:50%;backgroun
 
 <script>
 "use strict";
-var APP_VERSION="1.3.9";
+var APP_VERSION="1.3.10";
 var WEB_URL="https://womantechcs-boop.github.io/channel-radar/";
 /* ================= 저장소 (이 컴퓨터의 브라우저에만 저장) ================= */
 var LS={
@@ -327,12 +327,10 @@ var QUOTA=LS.get("cr.quota",{day:"",used:0,search:0});
 var SOUND=LS.get("cr.sound",true),BROWSER=LS.get("cr.browser","chrome"),upd=null;
 var clickUrl=null,soundErr="",soundMsg="";
 function clickWave(sr){
-  var len=Math.floor(sr*0.11),d=new Float32Array(len),seed=12345,prev=0,i;
+  var len=Math.floor(sr*0.06),d=new Float32Array(len),seed=12345,prev=0,i;
   for(i=0;i<len;i++){
     seed=(seed*1103515245+12345)&0x7fffffff;var r=seed/0x3fffffff-1;prev=0.6*r+0.4*prev;
-    var t=i/sr,t2=t-0.05,x=0;
-    if(t<0.02)x+=prev*Math.exp(-t*380)*0.9+Math.sin(2*Math.PI*3200*t)*Math.exp(-t*300)*0.45;      // 딸
-    if(t2>=0&&t2<0.035)x+=prev*Math.exp(-t2*260)*0.75+Math.sin(2*Math.PI*2100*t2)*Math.exp(-t2*220)*0.45; // 깍
+    var t=i/sr,x=prev*Math.exp(-t*300)*0.9+Math.sin(2*Math.PI*2600*t)*Math.exp(-t*240)*0.45;   // 딸깍 한 번
     d[i]=Math.max(-1,Math.min(1,x));
   }
   return d;
@@ -886,11 +884,11 @@ document.addEventListener("click",function(e){
     else if(act==="fetch-ch"){var fq=st.hot.q.trim();if(fq)run("채널 불러오기",function(status){return fetchChannel(fq,status)})}
     else if(act==="browser"){BROWSER=id==="default"?"default":"chrome";LS.set("cr.browser",BROWSER);if(window.radar&&window.radar.setBrowser)window.radar.setBrowser(BROWSER);renderCollect()}
     else if(act==="sound"){SOUND=!SOUND;LS.set("cr.sound",SOUND);soundMsg="";clickSound();renderCollect()}
-    else if(act==="sound-test"){clickSound(true);setTimeout(function(){clickSound(true)},450);setTimeout(function(){
+    else if(act==="sound-test"){clickSound(true);setTimeout(function(){
       var okDev=actx&&actx.state==="running";
       var done=function(m){soundMsg=m;if(cur==="collect")renderCollect()};
       if(soundErr)done("소리를 재생하지 못했습니다: "+soundErr);
-      else if(okDev)done("'딸깍' 소리를 두 번 재생했습니다. 소리 장치는 정상적으로 켜졌습니다. 안 들렸다면 스피커 음량과 윈도우 '볼륨 믹서'를 확인해 주세요.");
+      else if(okDev)done("'딸깍' 소리를 재생했습니다. 소리 장치는 정상적으로 켜졌습니다. 안 들렸다면 스피커 음량과 윈도우 '볼륨 믹서'를 확인해 주세요.");
       else done("이 컴퓨터에서는 프로그램이 소리 장치를 켜지 못해 효과음이 나지 않습니다. 프로그램의 다른 기능은 그대로 쓸 수 있습니다.");
     },1500)}
     else if(act==="check-update"){checkUpdate(false)}

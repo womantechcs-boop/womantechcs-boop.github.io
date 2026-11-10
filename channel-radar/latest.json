@@ -1,6 +1,6 @@
 {
-  "version": "1.3.9",
+  "version": "1.3.10",
   "url": "index.html",
-  "sha256": "a3a3c094bac25fd7a3566bc8f2d1246c9001ee1892dff43e6acd27c8c6048971",
-  "notes": "효과음을 마우스 버튼 같은 딸깍 소리로 변경"
+  "sha256": "5228321e9065796c5dce3351db6bd3a6bd9e50147a5372a253e60fb7f1a9e6cc",
+  "notes": "효과음을 딸깍 한 번으로 변경"
 }
