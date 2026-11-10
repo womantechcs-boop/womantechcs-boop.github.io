@@ -276,6 +276,7 @@ h1{font-family:var(--body);font-weight:700;letter-spacing:-.02em}
 .thumb{border-bottom:1px solid var(--line)}
 @media (min-width:901px){.cnum small{display:none}}
 @media (max-width:900px){.chead{display:none}.hero h1{font-size:34px}.hero p{font-size:16px}.summary{display:flex;border-radius:14px;flex-direction:column;gap:6px;padding:10px 4px}.summary span{border-left:0}}
+.addbar{display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between;background:var(--surface);border:1px dashed var(--brand);border-radius:14px;padding:12px 16px;margin-bottom:12px;color:var(--muted);font-size:14px}
 .themeseg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;margin-left:6px;align-self:center}
 .themeseg button{border:0;background:none;padding:6px 11px;font-size:13px;font-weight:600;color:var(--muted)}
 .themeseg button.on{background:var(--brand-soft);color:var(--brand)}
@@ -311,7 +312,7 @@ nav a .dot{display:inline-block;width:8px;height:8px;border-radius:50%;backgroun
 
 <script>
 "use strict";
-var APP_VERSION="1.1.0";
+var APP_VERSION="1.2.0";
 var WEB_URL="https://womantechcs-boop.github.io/channel-radar/";
 /* ================= 저장소 (이 컴퓨터의 브라우저에만 저장) ================= */
 var LS={
@@ -323,15 +324,19 @@ var DB=LS.get("cr.db",{});          // 채널 id -> 채널 기록
 var FAV=LS.get("cr.fav",{});
 var QUOTA=LS.get("cr.quota",{day:"",used:0,search:0});
 var SOUND=LS.get("cr.sound",true),actx=null,upd=null;
+function tick(t,f1,f2,len,vol){
+  var o=actx.createOscillator(),g=actx.createGain();
+  o.type="triangle";o.frequency.setValueAtTime(f1,t);o.frequency.exponentialRampToValueAtTime(f2,t+len);
+  g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(vol,t+0.003);g.gain.exponentialRampToValueAtTime(0.0001,t+len);
+  o.connect(g);g.connect(actx.destination);o.start(t);o.stop(t+len+0.02);
+}
 function clickSound(){
   if(!SOUND)return;
   try{
-    actx=actx||new (window.AudioContext||window.webkitAudioContext)();
-    if(actx.state==="suspended")actx.resume();
-    var t=actx.currentTime,o=actx.createOscillator(),g=actx.createGain();
-    o.type="square";o.frequency.setValueAtTime(1900,t);o.frequency.exponentialRampToValueAtTime(700,t+0.03);
-    g.gain.setValueAtTime(0.1,t);g.gain.exponentialRampToValueAtTime(0.0001,t+0.045);
-    o.connect(g);g.connect(actx.destination);o.start(t);o.stop(t+0.05);
+    var AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
+    actx=actx||new AC();
+    var play=function(){var t=actx.currentTime+0.01;tick(t,2600,1300,0.035,0.5);tick(t+0.055,1700,800,0.05,0.4)};
+    if(actx.state==="running")play();else actx.resume().then(play,function(){});
   }catch(e){}
 }
 function setTheme(t){
@@ -509,6 +514,23 @@ async function collectKeyword(q,region,days,status){
   await loadChannels(Object.keys(ids),{region:region,tag:q},status);
   return Object.keys(ids).length;
 }
+async function fetchChannel(q,status){
+  q=String(q).trim();var ids=[],m;
+  status("'"+q+"' 채널 찾는 중");
+  if((m=/(UC[\w-]{22})/.exec(q)))ids=[m[1]];
+  else if((m=/@([^\s\/?#]+)/.exec(q))||(m=/^([A-Za-z0-9._-]{3,30})$/.exec(q))){
+    var h="@"+m[1];try{h="@"+decodeURIComponent(m[1])}catch(e){}
+    var j=await api("channels",{part:"id",forHandle:h},1);
+    ids=(j.items||[]).map(function(x){return x.id});
+  }
+  if(!ids.length){
+    var sj=await api("search",{part:"snippet",type:"channel",q:q.replace(/^@/,""),maxResults:5},100);
+    ids=(sj.items||[]).map(function(x){return (x.id&&x.id.channelId)||(x.snippet&&x.snippet.channelId)}).filter(Boolean);
+  }
+  if(!ids.length)throw new Error("유튜브에서 '"+q+"' 채널을 찾지 못했습니다. 핸들(@이름)이나 채널 주소를 다시 확인해 주세요.");
+  await loadChannels(ids,{},status);
+  return ids.length;
+}
 var busy=false;
 async function run(label,fn){
   if(busy){toast("이미 다른 작업이 진행 중입니다.");return}
@@ -594,14 +616,15 @@ function hotList(){
 function drawHot(){
   var l=hotList();
   $("#hotSummary").innerHTML='<span>찾은 채널 <b>'+l.length.toLocaleString("ko-KR")+'</b>개</span><span>배수 3 이상 <b>'+l.filter(function(c){return M[c.id].ratio>=3}).length+'</b>개</span><span>배수 = 최근 영상 5개 평균 조회수 ÷ 구독자 수</span>';
-  $("#hotList").innerHTML=channelRows(l);
+  var q=st.hot.q.trim();
+  $("#hotList").innerHTML=(q?'<div class="addbar"><span>찾는 채널이 목록에 없나요? 목록에는 수집해 둔 채널만 나옵니다.</span><button type="button" class="btn" data-act="fetch-ch">유튜브에서 \''+esc(q)+'\' 불러오기</button></div>':'')+channelRows(l);
 }
 function renderHot(){
   if(!Object.keys(DB).length){view.innerHTML='<div class="hero"><div class="ico"><span><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><path d="M12 12 L18.5 5.5"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/></svg></span></div><h1>HOT 채널 레이더</h1><p>구독자는 적은데 조회수가 터지는 <em>떠오르는 채널</em>을 먼저 찾아냅니다.</p></div>'+noData();curDraw=function(){};return}
   view.innerHTML='<div class="hero"><div class="ico"><span><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><path d="M12 12 L18.5 5.5"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/></svg></span></div><h1>HOT 채널 레이더</h1><p>구독자는 적은데 조회수가 터지는 <em>떠오르는 채널</em>을 먼저 찾아냅니다.</p></div>'+
   '<div class="filters">'+sel("hot","country","국가",countryOpts())+sel("hot","cat","큰 분류",catOpts())+sel("hot","tag","수집 키워드",tagOpts())+
    sel("hot","subs","구독자 규모",[["ALL","전체"],["A","1천 미만"],["B","1천 ~ 1만"],["C","1만 ~ 10만"],["D","10만 ~ 100만"],["E","100만 이상"]])+
-   '<label class="f grow" for="hotQ"><span>채널 이름 검색</span><input id="hotQ" type="search" placeholder="채널 이름이나 @핸들" value="'+esc(st.hot.q)+'"></label>'+
+   '<label class="f grow" for="hotQ"><span>채널 이름 검색</span><input id="hotQ" type="search" placeholder="채널 이름, @핸들, 채널 주소" value="'+esc(st.hot.q)+'"></label>'+
   '</div><div class="summary" id="hotSummary"></div><div id="hotList"></div>';
   curDraw=drawHot;drawHot();
 }
@@ -750,7 +773,7 @@ document.addEventListener("click",function(e){
   if(t===shade){closeDrawer();return}
   var th=t.closest("[data-theme-set]");
   if(th){clickSound();setTheme(th.dataset.themeSet);return}
-  if(t.closest("#nav a,[data-sort],[data-kw],[data-chip]"))clickSound();
+  if(t.closest("#nav a,.brand,[data-sort],[data-kw],[data-chip],.star,.ibtn,[data-ch]"))clickSound();
   var s=t.closest("[data-star]");
   if(s){var sid=s.dataset.star;if(FAV[sid])delete FAV[sid];else FAV[sid]=1;saveFav();if(cur==="favorites")curDraw();else{s.classList.toggle("on");s.setAttribute("aria-pressed",s.classList.contains("on"))}return}
   var chip=t.closest("[data-chip]");
@@ -763,6 +786,7 @@ document.addEventListener("click",function(e){
   if(a){
     var act=a.dataset.act,id=a.dataset.id;
     if(act==="err-close")showError("");
+    else if(act==="fetch-ch"){var fq=st.hot.q.trim();if(fq)run("채널 불러오기",function(status){return fetchChannel(fq,status)})}
     else if(act==="sound"){SOUND=!SOUND;LS.set("cr.sound",SOUND);clickSound();renderCollect()}
     else if(act==="check-update"){checkUpdate(false)}
     else if(act==="apply-update"){
@@ -807,6 +831,7 @@ document.addEventListener("change",function(e){
 document.addEventListener("input",function(e){if(e.target.id==="hotQ"){st.hot.q=e.target.value;st.hot.limit=50;drawHot()}});
 document.addEventListener("keydown",function(e){
   if(e.key==="Escape"&&openId!==null){closeDrawer();return}
+  if(e.key==="Enter"&&e.target.id==="hotQ"&&st.hot.q.trim()&&!hotList().length){var fb=document.querySelector('[data-act="fetch-ch"]');if(fb)fb.click();return}
   if(e.key==="Enter"&&e.target.id==="kwIn"){var b=document.querySelector('[data-act="keyword"]');if(b)b.click();return}
   if(e.key==="Enter"&&e.target.id==="keyIn"){var kb=document.querySelector('[data-act="save-key"]');if(kb)kb.click();return}
   if((e.key==="Enter"||e.key===" ")&&e.target.matches&&e.target.matches("[data-kw]")){e.preventDefault();e.target.click()}
