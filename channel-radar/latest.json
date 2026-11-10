@@ -1,6 +1,6 @@
 {
-  "version": "1.3.10",
+  "version": "1.3.11",
   "url": "index.html",
-  "sha256": "5228321e9065796c5dce3351db6bd3a6bd9e50147a5372a253e60fb7f1a9e6cc",
-  "notes": "효과음을 딸깍 한 번으로 변경"
+  "sha256": "91456ccf50df0063d9c24f8cc3969b76889c19ca43c76cb3d74f2a7d697eec5c",
+  "notes": "효과음을 낮은 '딱' 소리로 변경, 소리 종류 4가지 중 고르기 추가"
 }

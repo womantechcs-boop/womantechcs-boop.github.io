@@ -313,7 +313,7 @@ nav a .dot{display:inline-block;width:8px;height:8px;border-radius:50%;backgroun
 
 <script>
 "use strict";
-var APP_VERSION="1.3.10";
+var APP_VERSION="1.3.11";
 var WEB_URL="https://womantechcs-boop.github.io/channel-radar/";
 /* ================= 저장소 (이 컴퓨터의 브라우저에만 저장) ================= */
 var LS={
@@ -326,12 +326,22 @@ var FAV=LS.get("cr.fav",{});
 var QUOTA=LS.get("cr.quota",{day:"",used:0,search:0});
 var SOUND=LS.get("cr.sound",true),BROWSER=LS.get("cr.browser","chrome"),upd=null;
 var clickUrl=null,soundErr="",soundMsg="";
+var KINDS=[["tak","딱 (낮고 짧게)"],["tok","톡 (부드럽게)"],["ddal","딸깍 (낮게 두 번)"],["ttik","띡 (높게)"]];
+var KIND=LS.get("cr.soundKind","tak");
 function clickWave(sr){
-  var len=Math.floor(sr*0.06),d=new Float32Array(len),seed=12345,prev=0,i;
+  var len=Math.floor(sr*(KIND==="ddal"?0.13:0.08)),d=new Float32Array(len),seed=12345,lp=0,i;
+  function hit(t,vol){                       // t초 지난 시점의 소리 한 번
+    if(t<0)return 0;
+    if(KIND==="ttik")return (lp*Math.exp(-t*300)*0.9+Math.sin(2*Math.PI*2600*t)*Math.exp(-t*240)*0.45)*vol;
+    if(KIND==="tok")return (Math.sin(2*Math.PI*420*t)*Math.exp(-t*110)*0.85+lp*Math.exp(-t*420)*0.25)*vol;
+    return (lp*Math.exp(-t*230)*0.95+Math.sin(2*Math.PI*700*t)*Math.exp(-t*170)*0.5+Math.sin(2*Math.PI*220*t)*Math.exp(-t*90)*0.5)*vol;   // 딱: 낮은 잡음 + 둔탁한 울림
+  }
+  var k=KIND==="ttik"?0.4:0.78;              // 값이 클수록 어둡고 낮은 소리
   for(i=0;i<len;i++){
-    seed=(seed*1103515245+12345)&0x7fffffff;var r=seed/0x3fffffff-1;prev=0.6*r+0.4*prev;
-    var t=i/sr,x=prev*Math.exp(-t*300)*0.9+Math.sin(2*Math.PI*2600*t)*Math.exp(-t*240)*0.45;   // 딸깍 한 번
-    d[i]=Math.max(-1,Math.min(1,x));
+    seed=(seed*1103515245+12345)&0x7fffffff;var r=seed/0x3fffffff-1;lp=(1-k)*r+k*lp;
+    var t=i/sr,x=hit(t,1);
+    if(KIND==="ddal")x+=hit(t-0.06,0.75);
+    d[i]=Math.max(-1,Math.min(1,x*(KIND==="ttik"?1:1.6)));
   }
   return d;
 }
@@ -829,7 +839,8 @@ function renderCollect(){
    '<div class="chips">'+PRESETS.map(function(p){return '<button type="button" class="chip" data-chip="'+esc(p)+'">'+esc(p)+'</button>'}).join("")+'</div></div>'+
   '<div class="card panel"><h2>4. 저장된 데이터</h2><p>저장된 채널 <b>'+n+'</b>개. 프로그램을 여는 날마다 채널 조회수를 자동으로 한 번 기록해 일일 조회수를 계산합니다(채널 50개당 사용량 1).</p>'+
    '<div class="line"><button type="button" class="btn ghost" data-act="refresh-all"'+(n?"":" disabled")+'>최근 영상까지 전체 새로고침 (사용량 약 '+Math.ceil(n*1.25)+')</button><button type="button" class="btn danger" data-act="wipe"'+(n?"":" disabled")+'>즐겨찾기만 남기고 정리</button></div></div>'+
-  '<div class="card panel"><h2>5. 효과음</h2><p>분류나 정렬을 누를 때 나는 딸깍 소리입니다.</p><p>지금 상태: <b>'+(SOUND?"켜짐":"꺼짐")+'</b></p><div class="line"><button type="button" class="btn ghost" data-act="sound">'+(SOUND?"효과음 끄기":"효과음 켜기")+'</button><button type="button" class="btn ghost" data-act="sound-test">소리 테스트</button></div>'+(soundMsg?'<div class="updbox">'+esc(soundMsg)+'</div>':'')+'</div>'+
+  '<div class="card panel"><h2>5. 효과음</h2><p>분류나 정렬을 누를 때 나는 딸깍 소리입니다.</p><p>지금 상태: <b>'+(SOUND?"켜짐":"꺼짐")+'</b></p><div class="line"><button type="button" class="btn ghost" data-act="sound">'+(SOUND?"효과음 끄기":"효과음 켜기")+'</button><button type="button" class="btn ghost" data-act="sound-test">소리 테스트</button></div>'+
+   '<p style="margin:14px 0 8px">소리 종류 (누르면 바로 들려줍니다)</p><div class="line">'+KINDS.map(function(k){return '<button type="button" class="btn '+(KIND===k[0]?"":"ghost")+'" data-act="sound-kind" data-id="'+k[0]+'">'+k[1]+'</button>'}).join("")+'</div>'+(soundMsg?'<div class="updbox">'+esc(soundMsg)+'</div>':'')+'</div>'+
   (window.radar&&window.radar.setBrowser?'<div class="card panel"><h2>6. 유튜브 링크를 열 브라우저</h2><p>영상이나 채널을 눌렀을 때 열리는 브라우저입니다. 크롬을 고르면 크롬이 깔려 있을 때 크롬으로, 없으면 윈도우 기본 브라우저로 엽니다.</p><p>지금 상태: <b>'+(BROWSER==="default"?"윈도우 기본 브라우저":"크롬")+'</b></p><div class="line"><button type="button" class="btn ghost" data-act="browser" data-id="chrome">크롬으로 열기</button><button type="button" class="btn ghost" data-act="browser" data-id="default">윈도우 기본 브라우저로 열기</button></div></div>':'')+
   '<div class="card panel"><h2>'+(window.radar&&window.radar.setBrowser?7:6)+'. 프로그램 버전·업데이트</h2>'+updateHtml()+'</div>';
 }
@@ -884,6 +895,7 @@ document.addEventListener("click",function(e){
     else if(act==="fetch-ch"){var fq=st.hot.q.trim();if(fq)run("채널 불러오기",function(status){return fetchChannel(fq,status)})}
     else if(act==="browser"){BROWSER=id==="default"?"default":"chrome";LS.set("cr.browser",BROWSER);if(window.radar&&window.radar.setBrowser)window.radar.setBrowser(BROWSER);renderCollect()}
     else if(act==="sound"){SOUND=!SOUND;LS.set("cr.sound",SOUND);soundMsg="";clickSound();renderCollect()}
+    else if(act==="sound-kind"){KIND=id;LS.set("cr.soundKind",KIND);clickBuf=null;clickUrl=null;if(actx){try{var wv=clickWave(actx.sampleRate);clickBuf=actx.createBuffer(1,wv.length,actx.sampleRate);clickBuf.getChannelData(0).set(wv)}catch(e){}}clickSound(true);renderCollect()}
     else if(act==="sound-test"){clickSound(true);setTimeout(function(){
       var okDev=actx&&actx.state==="running";
       var done=function(m){soundMsg=m;if(cur==="collect")renderCollect()};
