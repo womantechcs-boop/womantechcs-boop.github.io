@@ -313,7 +313,7 @@ nav a .dot{display:inline-block;width:8px;height:8px;border-radius:50%;backgroun
 
 <script>
 "use strict";
-var APP_VERSION="1.3.0";
+var APP_VERSION="1.3.1";
 var WEB_URL="https://womantechcs-boop.github.io/channel-radar/";
 /* ================= 저장소 (이 컴퓨터의 브라우저에만 저장) ================= */
 var LS={
@@ -595,7 +595,7 @@ function autoStats(){
 var st={
   hot:{country:"ALL",cat:"ALL",tag:"ALL",subs:"ALL",q:"",sort:"ratio",dir:-1,limit:50},
   rank:{country:"ALL",cat:"ALL"},
-  kw:{country:"ALL",cat:"ALL",open:null},
+  kw:{country:"ALL",cat:"ALL",lang:"ko",open:null},
   vid:{country:"ALL",cat:"ALL",tag:"ALL",form:"ALL",days:"7"}
 };
 var view=$("#view"),cur="hot",curDraw=function(){};
@@ -698,15 +698,28 @@ function renderRanking(){
 }
 
 /* ---------- 주간 키워드 ---------- */
-var STOP={};"그리고 하는 있는 없는 이유 영상 진짜 너무 정말 이게 이런 그냥 하면 해서 에서 으로 까지 부터 보다 대한 위한 이번 오늘 우리 모든 the and for with you your this that from how what why who when are was not but all can its has have will official video shorts short 쇼츠 full new live feat part ver".split(" ").forEach(function(w){STOP[w]=1});
-function tokens(t){var out={};String(t).toLowerCase().split(/[\s\[\](){}|,.!?~"'“”‘’:;·…#\/\\\-_+=*&<>「」『』【】]+/).forEach(function(w){if(w.length>=2&&w.length<=20&&!STOP[w]&&!/^\d+$/.test(w))out[w]=1});return Object.keys(out)}
+var STOP={};
+("그리고 그래서 그러나 하지만 그런데 근데 하는 하면 해서 했다 합니다 하는법 있는 없는 있다 없다 이유 영상 진짜 너무 정말 완전 이게 이런 저런 그런 이거 저거 그거 이렇게 그렇게 그냥 대한 위한 이번 오늘 어제 내일 지금 요즘 우리 모든 때문에 에서 으로 까지 부터 보다 것이 것을 것은 수가 되는 된다 같은 어떤 무슨 아니 "+
+"the and for with you your yours this that these those from how what why who whom when where which are was were been being not but all any can its has have had having will would could should may might must shall do does did done doing a an of to in on at by is it be as or if so no yes up out off over under again into than then too very just now more most much many few some such only own same other another each every both between through during before after above below about against down here there once ever never always get got gets getting go goes going gone went come comes came make makes made making take takes took taken see saw seen say says said know knew think thought want wants wanted need needs like likes liked one two three first last new old big best good bad me my mine we us our ours he him his she her hers they them their theirs i im ive id dont cant wont didnt isnt its thats whats youre were weve "+
+"official video videos shorts short full live feat part ver vs ep mv hd 4k ft amp quot").split(" ").forEach(function(w){STOP[w]=1});
+var JOSA=/(에서|으로|까지|부터|에게|한테|처럼|보다|을|를)$/;
+function tokens(t){
+  var out={};
+  String(t).toLowerCase().split(/[^\p{L}\p{N}]+/u).forEach(function(w){
+    if(/[\uac00-\ud7a3]/.test(w)&&w.length>=3)w=w.replace(JOSA,"");       // 한글 조사 일부 떼기
+    if(/^[a-z0-9]+$/.test(w)&&w.length<3)return;                            // 두 글자 이하 영어는 버림
+    if(w.length>=2&&w.length<=20&&!STOP[w]&&!/^\d+$/.test(w))out[w]=1;
+  });
+  return Object.keys(out);
+}
+function langOk(w){var l=st.kw.lang;return l==="ALL"||(l==="ko"?/[\uac00-\ud7a3]/.test(w):/^[a-z0-9]+$/.test(w))}
 function weekly(){
   var now=Date.now(),map={};
   channels().forEach(function(c){
     if(!match(c,st.kw))return;
     (c.vids||[]).forEach(function(v){
       if(now-v.p>7*DAY)return;
-      tokens(v.t).forEach(function(w){var k=map[w]||(map[w]={word:w,views:0,chs:{}});k.views+=v.v;(k.chs[c.id]=k.chs[c.id]||[]).push(v)});
+      tokens(v.t).forEach(function(w){if(!langOk(w))return;var k=map[w]||(map[w]={word:w,views:0,chs:{}});k.views+=v.v;(k.chs[c.id]=k.chs[c.id]||[]).push(v)});
     });
   });
   return Object.keys(map).map(function(w){return map[w]}).filter(function(k){return Object.keys(k.chs).length>=2}).sort(function(a,b){return b.views-a.views}).slice(0,30);
@@ -724,7 +737,7 @@ function renderKeywords(){
       :'<div class="card empty">최근 7일 안에 올라온 영상에서 여러 채널이 함께 쓴 단어가 아직 없습니다. 채널을 더 수집해 보세요.</div>';
   };
   view.innerHTML='<h1>주간 인기 키워드</h1><p class="lead">수집한 채널이 최근 7일 동안 올린 영상 제목에서, 두 개 이상의 채널이 함께 쓴 단어를 조회수 합계 순으로 보여 줍니다. 키워드를 누르면 관련 채널이 펼쳐집니다.</p>'+
-   '<div class="filters">'+sel("kw","country","국가",countryOpts())+sel("kw","cat","큰 분류",catOpts())+'</div><div id="kwList"></div>';
+   '<div class="filters">'+sel("kw","country","국가",countryOpts())+sel("kw","cat","큰 분류",catOpts())+sel("kw","lang","키워드 언어",[["ko","한글만"],["en","영어만"],["ALL","전체"]])+'</div><div id="kwList"></div>';
   curDraw();
 }
 
