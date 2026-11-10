@@ -1,6 +1,6 @@
 {
-  "version": "1.2.1",
+  "version": "1.2.2",
   "url": "index.html",
-  "sha256": "5c63c4b71b9c84dd3e6273fc902cdce41a7b73ac457ba7ee070da575977de1c5",
-  "notes": "@영문 핸들과 @한글 핸들 모두로 채널 검색·불러오기, 채널 주소로도 검색"
+  "sha256": "6bdf3fc5aac7028d7c6b953ab98395b5bba5bfd2df38482b20fbc7873a27b630",
+  "notes": "화면 왼쪽 위 이름 옆에 버전 표시, 인기 채널 가져오기 안내 문구 수정"
 }
