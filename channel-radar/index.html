@@ -278,6 +278,18 @@ h1{font-family:var(--body);font-weight:700;letter-spacing:-.02em}
 @media (max-width:900px){.chead{display:none}.hero h1{font-size:34px}.hero p{font-size:16px}.summary{display:flex;border-radius:14px;flex-direction:column;gap:6px;padding:10px 4px}.summary span{border-left:0}}
 .addbar{display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between;background:var(--surface);border:1px dashed var(--brand);border-radius:14px;padding:12px 16px;margin-bottom:12px;color:var(--muted);font-size:14px}
 .ver{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:1px 7px;margin-left:-8px;white-space:nowrap}
+.advbar{display:flex;gap:8px;flex-basis:100%;flex-wrap:wrap}
+.advbar .btn{padding:8px 14px;font-size:14px}
+.adv{flex-basis:100%;border-top:1px solid var(--line);padding-top:6px}
+.adv h3{font-size:13px;color:var(--muted);margin:14px 0 8px;font-weight:600}
+.advgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px 16px}
+.rangef>span{display:block;font-size:12px;color:var(--muted);font-weight:500;margin-bottom:4px}
+.rangef>div{display:flex;align-items:center;gap:6px}
+.rangef input{flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 11px;font-size:14px;color:var(--ink)}
+.rangef i{color:var(--muted);font-style:normal}
+.adv .line{display:flex;gap:10px;flex-wrap:wrap}
+.adv .chips{margin-top:0}
+.advnote{font-size:12px;color:var(--muted);margin:12px 0 0}
 .themeseg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;margin-left:6px;align-self:center}
 .themeseg button{border:0;background:none;padding:6px 11px;font-size:13px;font-weight:600;color:var(--muted)}
 .themeseg button.on{background:var(--brand-soft);color:var(--brand)}
@@ -313,7 +325,7 @@ nav a .dot{display:inline-block;width:8px;height:8px;border-radius:50%;backgroun
 
 <script>
 "use strict";
-var APP_VERSION="1.3.16";
+var APP_VERSION="1.4.0";
 var WEB_URL="https://womantechcs-boop.github.io/channel-radar/";
 /* ================= 저장소 (이 컴퓨터의 브라우저에만 저장) ================= */
 var LS={
@@ -476,6 +488,16 @@ function loadDB(){
 function saveFav(){LS.set("cr.fav",FAV);$("#favCnt").textContent=Object.keys(FAV).length||""}
 
 /* ================= 지표 계산 ================= */
+var LANGS={ko:"한국어",en:"영어·라틴 문자",ja:"일본어",zh:"중국어",ru:"러시아어",ar:"아랍어",th:"태국어",hi:"힌디어",etc:"기타"};
+function langOf(c,vids){
+  var t=(c.name||"")+" "+vids.map(function(v){return v.t}).join(" "),n=function(re){var m=t.match(re);return m?m.length:0};
+  var ko=n(/[\uac00-\ud7a3]/g),ja=n(/[\u3040-\u30ff]/g),zh=n(/[\u4e00-\u9fff]/g),ru=n(/[\u0400-\u04ff]/g),ar=n(/[\u0600-\u06ff]/g),th=n(/[\u0e00-\u0e7f]/g),hi=n(/[\u0900-\u097f]/g),en=n(/[a-zA-Z]/g);
+  var all=ko+ja+zh+ru+ar+th+hi+en;if(!all)return "etc";
+  if(ko/all>=0.2)return "ko";
+  if(ja/all>=0.08)return "ja";
+  var best="en",mx=en;[["zh",zh],["ru",ru],["ar",ar],["th",th],["hi",hi]].forEach(function(x){if(x[1]>mx){mx=x[1];best=x[0]}});
+  return best;
+}
 function calc(c){
   var now=Date.now(),vids=(c.vids||[]).slice().sort(function(a,b){return b.p-a.p});
   var r5=vids.slice(0,5),sum=0;r5.forEach(function(v){sum+=v.v});
@@ -490,7 +512,13 @@ function calc(c){
   var cnt={},cat=0,best=0;vids.forEach(function(v){if(!v.c)return;cnt[v.c]=(cnt[v.c]||0)+1;if(cnt[v.c]>best){best=cnt[v.c];cat=v.c}});
   var sh=0,known=0;vids.forEach(function(v){if(v.d>0){known++;if(v.d<=60)sh++}});
   var form=known?(sh*2>=known?"S":"L"):"";          // 최근 영상의 절반 이상이 60초 이하면 쇼츠 채널
-  return {form:form,vids:vids,avg:avg,ratio:(c.subs>0&&avg!=null)?avg/c.subs:null,week:week,daily:daily,real:real,cat:cat?(CAT[cat]||"기타"):"분류 없음"};
+  var n30=0;vids.forEach(function(v){if(now-v.p<30*DAY)n30++});
+  var upw=null;
+  if(vids.length){
+    if(n30<vids.length)upw=n30/(30/7);                                   // 받아 온 영상이 30일을 넘게 걸쳐 있으면 최근 30일 기준
+    else{var span=Math.max(DAY,vids[0].p-vids[vids.length-1].p);upw=vids.length>1?(vids.length-1)/(span/(7*DAY)):1}   // 전부 30일 안이면 올린 간격으로 계산
+  }
+  return {upw:upw,last:vids.length?vids[0].p:null,lang:langOf(c,vids),form:form,vids:vids,avg:avg,ratio:(c.subs>0&&avg!=null)?avg/c.subs:null,week:week,daily:daily,real:real,cat:cat?(CAT[cat]||"기타"):"분류 없음"};
 }
 // 수집 도중에 새로 들어온 채널도 화면에서 바로 계산해 쓸 수 있게 한다
 function met(id){return M[id]||(M[id]=calc(DB[id]||{id:id}))}
@@ -673,7 +701,7 @@ function autoStats(){
 
 /* ================= 화면 상태 ================= */
 var st={
-  hot:{country:"ALL",cat:"ALL",tag:"ALL",form:"ALL",subs:"ALL",q:"",sort:"ratio",dir:-1,limit:50},
+  hot:{country:"ALL",cat:"ALL",tag:"ALL",form:"ALL",lang:"ALL",last:"ALL",born:"ALL",advOpen:false,adv:{},subs:"ALL",q:"",sort:"ratio",dir:-1,limit:50},
   rank:{country:"ALL",cat:"ALL",form:"ALL"},
   kw:{country:"ALL",cat:"ALL",lang:"ko",open:null},
   vid:{country:"ALL",cat:"ALL",tag:"ALL",form:"ALL",days:"7"}
@@ -696,7 +724,7 @@ var FORM_OPTS=[["ALL","전체"],["S","쇼츠 채널"],["L","롱폼 채널"]];
 function noData(){return '<div class="card empty">아직 수집한 채널이 없습니다. <a href="#collect">데이터 수집·설정</a>에서 먼저 채널을 가져와 주세요.</div>'}
 
 /* ---------- 채널 줄 ---------- */
-var SORTS={subs:function(c){return c.subs},daily:function(c){return met(c.id).daily},ratio:function(c){return met(c.id).ratio},week:function(c){return met(c.id).week},age:function(c){return c.created}};
+var SORTS={subs:function(c){return c.subs},daily:function(c){return met(c.id).daily},ratio:function(c){return met(c.id).ratio},week:function(c){return met(c.id).week},avg:function(c){return met(c.id).avg},upw:function(c){return met(c.id).upw},age:function(c){return c.created}};
 function sortList(l){
   var k=SORTS[st.hot.sort],d=st.hot.dir;
   return l.sort(function(a,b){var x=k(a),y=k(b);if(x==null&&y==null)return 0;if(x==null)return 1;if(y==null)return -1;return (x-y)*d});
@@ -705,7 +733,7 @@ function sortBtn(o){var on=st.hot.sort===o[0];return '<button type="button" clas
 function starBtn(c){return '<button type="button" class="star'+(FAV[c.id]?" on":"")+'" data-star="'+esc(c.id)+'" aria-label="'+esc(c.name)+' 즐겨찾기" aria-pressed="'+(FAV[c.id]?"true":"false")+'">★</button>'}
 function dailyHtml(m){return m.daily==null?"–":"+"+fmt(m.daily)+(m.real?"":'<span class="est">추정</span>')}
 function channelRows(list){
-  var bar='<div class="sortbar"><span>정렬</span>'+[["subs","구독자"],["daily","일일 조회수"],["ratio","구독자 대비 배수"],["week","최근 7일"],["age","개설"]].map(sortBtn).join("")+'</div>';
+  var bar='<div class="sortbar"><span>정렬</span>'+[["subs","구독자"],["daily","일일 조회수"],["ratio","구독자 대비 배수"],["avg","평균 조회수"],["week","최근 7일"],["upw","주당 업로드"],["age","개설"]].map(sortBtn).join("")+'</div>';
   if(!list.length)return bar+'<div class="card empty">조건에 맞는 채널이 없습니다. 필터를 넓혀 보세요.</div>';
   var shown=list.slice(0,st.hot.limit);
   return bar+'<div class="card rows"><div class="chead"><span>채널 정보</span><span>구독자</span><span>최근 업로드 콘텐츠</span><span>영상 수</span><span>조회수 증감</span><span></span></div>'+shown.map(function(c,i){
@@ -717,7 +745,7 @@ function channelRows(list){
      '<div class="cnum c-subs"><small>구독자</small><b>'+(c.subs==null?"비공개":fmt(c.subs))+'</b></div>'+
      '<div class="tiles" aria-label="최근 영상">'+tiles+'</div>'+
      '<div class="cnum c-vids"><small>영상 수</small><b>'+fmt(c.videoCount)+'</b></div>'+
-     '<div class="cday"><small>일일 조회수</small><b class="gain">'+dailyHtml(m)+'</b><span>'+pill(m.ratio)+'</span><small>7일 내 영상 '+fmt(m.week)+'회</small><small>개설 '+age(c.created)+'</small></div>'+
+     '<div class="cday"><small>일일 조회수</small><b class="gain">'+dailyHtml(m)+'</b><span>'+pill(m.ratio)+'</span><small>평균 조회 '+fmt(m.avg)+' · 주 '+(m.upw==null?"–":m.upw>=10?m.upw.toFixed(0):m.upw.toFixed(1))+'회 업로드</small><small>7일 내 영상 '+fmt(m.week)+'회</small><small>개설 '+age(c.created)+'</small></div>'+
      '<div class="cact"><button type="button" class="ibtn" aria-label="'+esc(c.name)+' 상세 보기"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="8" width="3" height="6" fill="currentColor"/><rect x="6.5" y="3" width="3" height="11" fill="currentColor"/><rect x="11" y="6" width="3" height="8" fill="currentColor"/></svg></button>'+starBtn(c)+'</div></div>'}).join("")+
    (list.length>shown.length?'<button type="button" class="more" data-act="more">더 보기 ('+shown.length+' / '+list.length+')</button>':'')+'</div>';
 }
@@ -745,6 +773,34 @@ function parseQuery(q){
   if(q.charAt(0)==="@")return {kind:"handle",value:q.split(/[\s\/?#]/)[0]};
   return {kind:"text",value:q};
 }
+// "50만", "1,000", "2억", "1.5천" 같은 입력을 숫자로
+function parseNum(x){
+  x=String(x==null?"":x).replace(/[,\s]/g,"");if(!x)return null;
+  var m=/^(\d+(?:\.\d+)?)(천|만|억|k|m)?$/i.exec(x);if(!m)return null;
+  var u={"천":1e3,"만":1e4,"억":1e8,"k":1e3,"m":1e6}[(m[2]||"").toLowerCase()]||1;
+  return parseFloat(m[1])*u;
+}
+var ADV_FIELDS=[["subs","구독자","예: 1천"],["avg","평균 조회수 (최근 영상 5개)","예: 50만"],["vid","전체 영상 수","예: 10"],["upw","주당 업로드 수","예: 1"],["ratio","구독자 대비 배수","예: 3"]];
+var ADV_RAW={};          // 입력 칸에 적힌 글자 그대로
+var PRESETS_ADV=[
+  ["신생 떡상 (구독 1천~1만 · 평균 조회 50만~200만 · 최근 개설순)",{subsMin:"1천",subsMax:"1만",avgMin:"50만",avgMax:"200만"},{sort:"age",dir:-1}],
+  ["소형 고배수 (구독 1만 이하 · 배수 5 이상)",{subsMax:"1만",ratioMin:"5"},{sort:"ratio",dir:-1}],
+  ["꾸준한 채널 (주 3회 이상 · 배수 1 이상)",{upwMin:"3",ratioMin:"1"},{sort:"daily",dir:-1}],
+  ["1년 안에 만든 채널 (배수 3 이상)",{ratioMin:"3"},{born:"365",sort:"ratio",dir:-1}]
+];
+function advCount(){var f=st.hot,n=Object.keys(f.adv).filter(function(k){return f.adv[k]!=null}).length;["lang","last","born"].forEach(function(k){if(f[k]!=="ALL")n++});return n}
+function applyAdvRaw(){st.hot.adv={};Object.keys(ADV_RAW).forEach(function(k){var v=parseNum(ADV_RAW[k]);if(v!=null)st.hot.adv[k]=v})}
+function advHtml(){
+  var f=st.hot;
+  var langs=[["ALL","전체"]].concat(countBy(function(c){return met(c.id).lang}).map(function(k){return [k,LANGS[k]||k]}));
+  return '<div class="adv" id="advBox"><h3>업로드·성과</h3><div class="advgrid">'+ADV_FIELDS.map(function(x){
+     return '<div class="rangef"><span>'+x[1]+'</span><div><input type="text" inputmode="decimal" id="adv_'+x[0]+'Min" data-adv="'+x[0]+'Min" placeholder="최소 ('+x[2]+')" value="'+esc(ADV_RAW[x[0]+"Min"]||"")+'" aria-label="'+x[1]+' 최소"><i>~</i><input type="text" inputmode="decimal" id="adv_'+x[0]+'Max" data-adv="'+x[0]+'Max" placeholder="최대" value="'+esc(ADV_RAW[x[0]+"Max"]||"")+'" aria-label="'+x[1]+' 최대"></div></div>'}).join("")+'</div>'+
+   '<h3>분류·날짜</h3><div class="line">'+sel("hot","lang","언어",langs)+
+     sel("hot","last","마지막 업로드",[["ALL","전체"],["7","7일 이내"],["30","30일 이내"],["90","90일 이내"],["old","90일 넘게 없음"]])+
+     sel("hot","born","채널 개설",[["ALL","전체"],["30","1개월 이내"],["90","3개월 이내"],["180","6개월 이내"],["365","1년 이내"],["730","2년 이내"],["old","2년 넘음"]])+'</div>'+
+   '<h3>자주 쓰는 조합</h3><div class="chips">'+PRESETS_ADV.map(function(p,i){return '<button type="button" class="chip" data-preset="'+i+'">'+esc(p[0])+'</button>'}).join("")+'</div>'+
+   '<p class="advnote">숫자는 1천, 50만, 2억처럼 적어도 됩니다. 주당 업로드 수는 최근 받아 온 영상(최대 10개) 기준 추정입니다.</p></div>';
+}
 function hotList(){
   var f=st.hot,q=norm(f.q),pq=parseQuery(f.q),key=norm(pq.value);
   return sortList(channels().filter(function(c){
@@ -758,6 +814,11 @@ function hotList(){
       if(f.subs==="D"&&(s<1e5||s>=1e6))return false;
       if(f.subs==="E"&&s<1e6)return false;
     }
+    var m=met(c.id),a=f.adv,rng=function(v,lo,hi){return !((lo!=null&&(v==null||v<lo))||(hi!=null&&(v==null||v>hi)))};
+    if(!rng(s,a.subsMin,a.subsMax)||!rng(m.avg,a.avgMin,a.avgMax)||!rng(c.videoCount,a.vidMin,a.vidMax)||!rng(m.upw,a.upwMin,a.upwMax)||!rng(m.ratio,a.ratioMin,a.ratioMax))return false;
+    if(f.lang!=="ALL"&&m.lang!==f.lang)return false;
+    if(f.last!=="ALL"){var dl=m.last?(Date.now()-m.last)/DAY:1e9;if(f.last==="old"?dl<=90:dl>+f.last)return false}
+    if(f.born!=="ALL"){var db=c.created?(Date.now()-c.created)/DAY:1e9;if(f.born==="old"?db<=730:db>+f.born)return false}
     if(q){
       if(pq.kind==="video"){if(!(c.vids||[]).some(function(v){return v.i===pq.value})&&norm((c.alias||[]).join(" ")).indexOf(q)<0)return false}
       else{var hay=norm(c.name+" "+c.handle+" "+c.id+" "+(c.alias||[]).join(" "));if(hay.indexOf(q)<0&&(!key||hay.indexOf(key)<0))return false}
@@ -766,7 +827,8 @@ function hotList(){
   }));
 }
 function drawHot(){
-  var l=hotList();
+  var l=hotList(),ac=advCount(),acEl=$("#advCnt");
+  if(acEl)acEl.textContent=ac?" · "+ac+"개 적용 중":"";
   $("#hotSummary").innerHTML='<span>찾은 채널 <b>'+l.length.toLocaleString("ko-KR")+'</b>개</span><span>배수 3 이상 <b>'+l.filter(function(c){return met(c.id).ratio>=3}).length+'</b>개</span><span>배수 = 최근 영상 5개 평균 조회수 ÷ 구독자 수</span>';
   var q=st.hot.q.trim();
   $("#hotList").innerHTML=(q?'<div class="addbar"><span>찾는 채널이 목록에 없나요? 목록에는 수집해 둔 채널만 나옵니다. 채널 링크나 영상 링크를 붙여 넣어도 됩니다.</span><button type="button" class="btn" data-act="fetch-ch">유튜브에서 \''+esc(q.length>36?q.slice(0,34)+"…":q)+'\' 불러오기</button></div>':'')+channelRows(l);
@@ -777,6 +839,8 @@ function renderHot(){
   '<div class="filters">'+sel("hot","country","국가",countryOpts())+sel("hot","cat","큰 분류",catOpts())+sel("hot","tag","수집 키워드",tagOpts())+sel("hot","form","쇼츠 / 롱폼",FORM_OPTS)+
    sel("hot","subs","구독자 규모",[["ALL","전체"],["A","1천 미만"],["B","1천 ~ 1만"],["C","1만 ~ 10만"],["D","10만 ~ 100만"],["E","100만 이상"]])+
    '<label class="f grow" for="hotQ"><span>채널 이름 검색</span><input id="hotQ" type="search" placeholder="채널 이름, @핸들, 채널 링크, 영상 링크" value="'+esc(st.hot.q)+'"></label>'+
+   '<div class="advbar"><button type="button" class="btn ghost" data-act="adv-toggle" aria-expanded="'+st.hot.advOpen+'">고급 필터 '+(st.hot.advOpen?"접기 ▴":"펼치기 ▾")+'<span id="advCnt"></span></button><button type="button" class="btn ghost" data-act="adv-reset">필터 초기화</button></div>'+
+   (st.hot.advOpen?advHtml():'')+
   '</div><div class="summary" id="hotSummary"></div><div id="hotList"></div>';
   curDraw=drawHot;drawHot();
 }
@@ -944,6 +1008,9 @@ document.addEventListener("click",function(e){
   if(t.closest("#nav a,.brand,[data-sort],[data-kw],[data-chip],.star,.ibtn,[data-ch]"))clickSound();
   var s=t.closest("[data-star]");
   if(s){var sid=s.dataset.star;if(FAV[sid])delete FAV[sid];else FAV[sid]=1;saveFav();if(cur==="favorites")curDraw();else{s.classList.toggle("on");s.setAttribute("aria-pressed",s.classList.contains("on"))}return}
+  var ps=t.closest("[data-preset]");
+  if(ps){var P=PRESETS_ADV[+ps.dataset.preset];ADV_RAW={};Object.keys(P[1]).forEach(function(k){ADV_RAW[k]=P[1][k]});applyAdvRaw();
+    st.hot.last="ALL";st.hot.born="ALL";st.hot.lang="ALL";Object.keys(P[2]).forEach(function(k){st.hot[k]=P[2][k]});st.hot.limit=50;clickSound();renderHot();return}
   var chip=t.closest("[data-chip]");
   if(chip){$("#kwIn").value=chip.dataset.chip;$("#kwIn").focus();return}
   var so=t.closest("[data-sort]");
@@ -954,6 +1021,8 @@ document.addEventListener("click",function(e){
   if(a){
     var act=a.dataset.act,id=a.dataset.id;
     if(act==="err-close")showError("");
+    else if(act==="adv-toggle"){st.hot.advOpen=!st.hot.advOpen;clickSound();renderHot()}
+    else if(act==="adv-reset"){ADV_RAW={};st.hot.adv={};["country","cat","tag","form","subs","lang","last","born"].forEach(function(k){st.hot[k]="ALL"});st.hot.q="";st.hot.limit=50;clickSound();renderHot()}
     else if(act==="fetch-ch"){var fq=st.hot.q.trim();if(fq)run("채널 불러오기",function(status){return fetchChannel(fq,status)})}
     else if(act==="browser"){BROWSER=id==="default"?"default":"chrome";LS.set("cr.browser",BROWSER);if(window.radar&&window.radar.setBrowser)window.radar.setBrowser(BROWSER);renderCollect()}
     else if(act==="sound"){SOUND=!SOUND;LS.set("cr.sound",SOUND);soundMsg="";clickSound();renderCollect()}
@@ -1005,7 +1074,10 @@ document.addEventListener("change",function(e){
   if(el.dataset.p==="hot")st.hot.limit=50;
   curDraw();
 });
-document.addEventListener("input",function(e){if(e.target.id==="hotQ"){st.hot.q=e.target.value;st.hot.limit=50;drawHot()}});
+document.addEventListener("input",function(e){
+  if(e.target.id==="hotQ"){st.hot.q=e.target.value;st.hot.limit=50;drawHot()}
+  else if(e.target.dataset&&e.target.dataset.adv){ADV_RAW[e.target.dataset.adv]=e.target.value;applyAdvRaw();st.hot.limit=50;drawHot()}
+});
 document.addEventListener("keydown",function(e){
   if(e.key==="Escape"&&openId!==null){closeDrawer();return}
   if(e.key==="Enter"&&e.target.id==="hotQ"&&st.hot.q.trim()&&!hotList().length){var fb=document.querySelector('[data-act="fetch-ch"]');if(fb)fb.click();return}
