@@ -18,6 +18,11 @@ async function get(url){
   return r;
 }
 
+// 일부 윈도우 컴퓨터에서 소리가 윈도우까지 전달되지 않는 문제 대응:
+// 소리 처리 부분의 격리(샌드박스)를 끄고 프로그램 본체에서 직접 소리를 낸다
+app.commandLine.appendSwitch('disable-features','AudioServiceSandbox,AudioServiceOutOfProcess');
+app.commandLine.appendSwitch('autoplay-policy','no-user-gesture-required');
+
 if(!app.requestSingleInstanceLock()){app.quit()}
 let win=null,readyTimer=null;
 let browserPref='chrome';
