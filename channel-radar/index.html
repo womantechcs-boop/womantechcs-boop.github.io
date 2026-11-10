@@ -313,7 +313,7 @@ nav a .dot{display:inline-block;width:8px;height:8px;border-radius:50%;backgroun
 
 <script>
 "use strict";
-var APP_VERSION="1.3.13";
+var APP_VERSION="1.3.14";
 var WEB_URL="https://womantechcs-boop.github.io/channel-radar/";
 /* ================= 저장소 (이 컴퓨터의 브라우저에만 저장) ================= */
 var LS={
@@ -614,18 +614,28 @@ async function collectKeyword(q,region,days,status){
 async function fetchChannel(q,status){
   q=String(q).trim();var ids=[],m,bySearch=false;
   status("'"+q+"' 채널 찾는 중");
-  if((m=/(UC[\w-]{22})/.exec(q)))ids=[m[1]];
-  else if((m=/@([^\s\/?#]+)/.exec(q))||(m=/^([A-Za-z0-9._-]{3,30})$/.exec(q))){
-    var h="@"+m[1];try{h="@"+decodeURIComponent(m[1])}catch(e){}
+  var pq=parseQuery(q),val=pq.value;
+  if(pq.kind==="id")ids=[val];
+  else if(pq.kind==="video"){                                   // 영상 링크 -> 그 영상을 올린 채널
+    var vj=await api("videos",{part:"snippet",id:val},1);
+    ids=(vj.items||[]).map(function(x){return x.snippet&&x.snippet.channelId}).filter(Boolean);
+    if(!ids.length)throw new Error("그 링크의 영상을 찾지 못했습니다. 삭제됐거나 비공개 영상일 수 있습니다.");
+  }
+  else if(pq.kind==="user"){
+    var uj=await api("channels",{part:"id",forUsername:val},1);
+    ids=(uj.items||[]).map(function(x){return x.id});
+  }
+  else if(pq.kind==="handle"||/^[A-Za-z0-9._-]{3,30}$/.test(val)){
+    var h=val.charAt(0)==="@"?val:"@"+val;
     var j=await api("channels",{part:"id",forHandle:h},1);
     ids=(j.items||[]).map(function(x){return x.id});
-  }
-  if(!ids.length&&window.radar&&window.radar.resolve&&!/^https?:/i.test(q)){
-    try{var rr=await window.radar.resolve(q);if(rr&&rr.ok&&rr.id)ids=[rr.id]}catch(e){}
+    if(!ids.length&&window.radar&&window.radar.resolve){
+      try{var rr=await window.radar.resolve(h);if(rr&&rr.ok&&rr.id)ids=[rr.id]}catch(e){}
+    }
   }
   if(!ids.length){
     bySearch=true;
-    var sj=await api("search",{part:"snippet",type:"channel",q:q.replace(/^@/,""),maxResults:10},100);
+    var sj=await api("search",{part:"snippet",type:"channel",q:val.replace(/^@/,""),maxResults:10},100);
     ids=(sj.items||[]).map(function(x){return (x.id&&x.id.channelId)||(x.snippet&&x.snippet.channelId)}).filter(Boolean);
   }
   if(!ids.length)throw new Error("유튜브에서 '"+q+"' 채널을 찾지 못했습니다. 핸들(@이름)이나 채널 주소를 다시 확인해 주세요.");
@@ -702,8 +712,29 @@ function channelRows(list){
 
 /* ---------- HOT 채널 ---------- */
 function norm(x){var t=String(x||"");try{t=decodeURIComponent(t)}catch(e){}return t.toLowerCase().replace(/https?:\/\/(www\.)?youtube\.com\/(channel\/)?/g,"").replace(/[@\s]/g,"")}
+function parseQuery(q){
+  q=String(q||"").trim();
+  var dec=function(x){try{return decodeURIComponent(x)}catch(e){return x}};
+  if(/(youtube\.com|youtu\.be)/i.test(q)){
+    try{
+      var u=new URL(/^https?:\/\//i.test(q)?q:"https://"+q),seg=u.pathname.split("/").filter(Boolean),host=u.hostname.toLowerCase();
+      if(host.indexOf("youtu.be")>=0&&seg[0])return {kind:"video",value:seg[0]};
+      if(seg[0]==="watch"&&u.searchParams.get("v"))return {kind:"video",value:u.searchParams.get("v")};
+      if(/^(shorts|live|embed|v)$/.test(seg[0])&&seg[1])return {kind:"video",value:seg[1]};
+      if(seg[0]==="channel"&&/^UC[\w-]{22}$/.test(seg[1]||""))return {kind:"id",value:seg[1]};
+      if(seg[0]&&seg[0].charAt(0)==="@")return {kind:"handle",value:dec(seg[0])};
+      if(seg[0]==="user"&&seg[1])return {kind:"user",value:dec(seg[1])};
+      if(seg[0]==="c"&&seg[1])return {kind:"text",value:dec(seg[1])};
+      if(seg[0])return {kind:"text",value:dec(seg[0])};
+    }catch(e){}
+  }
+  var m=/(UC[\w-]{22})/.exec(q);
+  if(m)return {kind:"id",value:m[1]};
+  if(q.charAt(0)==="@")return {kind:"handle",value:q.split(/[\s\/?#]/)[0]};
+  return {kind:"text",value:q};
+}
 function hotList(){
-  var f=st.hot,q=norm(f.q);
+  var f=st.hot,q=norm(f.q),pq=parseQuery(f.q),key=norm(pq.value);
   return sortList(channels().filter(function(c){
     if(!match(c,f))return false;
     var s=c.subs;
@@ -715,7 +746,10 @@ function hotList(){
       if(f.subs==="D"&&(s<1e5||s>=1e6))return false;
       if(f.subs==="E"&&s<1e6)return false;
     }
-    if(q&&norm(c.name+" "+c.handle+" "+c.id+" "+(c.alias||[]).join(" ")).indexOf(q)<0)return false;
+    if(q){
+      if(pq.kind==="video"){if(!(c.vids||[]).some(function(v){return v.i===pq.value})&&norm((c.alias||[]).join(" ")).indexOf(q)<0)return false}
+      else{var hay=norm(c.name+" "+c.handle+" "+c.id+" "+(c.alias||[]).join(" "));if(hay.indexOf(q)<0&&(!key||hay.indexOf(key)<0))return false}
+    }
     return true;
   }));
 }
@@ -723,14 +757,14 @@ function drawHot(){
   var l=hotList();
   $("#hotSummary").innerHTML='<span>찾은 채널 <b>'+l.length.toLocaleString("ko-KR")+'</b>개</span><span>배수 3 이상 <b>'+l.filter(function(c){return met(c.id).ratio>=3}).length+'</b>개</span><span>배수 = 최근 영상 5개 평균 조회수 ÷ 구독자 수</span>';
   var q=st.hot.q.trim();
-  $("#hotList").innerHTML=(q?'<div class="addbar"><span>찾는 채널이 목록에 없나요? 목록에는 수집해 둔 채널만 나옵니다.</span><button type="button" class="btn" data-act="fetch-ch">유튜브에서 \''+esc(q)+'\' 불러오기</button></div>':'')+channelRows(l);
+  $("#hotList").innerHTML=(q?'<div class="addbar"><span>찾는 채널이 목록에 없나요? 목록에는 수집해 둔 채널만 나옵니다. 채널 링크나 영상 링크를 붙여 넣어도 됩니다.</span><button type="button" class="btn" data-act="fetch-ch">유튜브에서 \''+esc(q.length>36?q.slice(0,34)+"…":q)+'\' 불러오기</button></div>':'')+channelRows(l);
 }
 function renderHot(){
   if(!Object.keys(DB).length){view.innerHTML='<div class="hero"><div class="ico"><span><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><path d="M12 12 L18.5 5.5"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/></svg></span></div><h1>HOT 채널 레이더</h1><p>구독자는 적은데 조회수가 터지는 <em>떠오르는 채널</em>을 먼저 찾아냅니다.</p></div>'+noData();curDraw=function(){};return}
   view.innerHTML='<div class="hero"><div class="ico"><span><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><path d="M12 12 L18.5 5.5"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/></svg></span></div><h1>HOT 채널 레이더</h1><p>구독자는 적은데 조회수가 터지는 <em>떠오르는 채널</em>을 먼저 찾아냅니다.</p></div>'+
   '<div class="filters">'+sel("hot","country","국가",countryOpts())+sel("hot","cat","큰 분류",catOpts())+sel("hot","tag","수집 키워드",tagOpts())+
    sel("hot","subs","구독자 규모",[["ALL","전체"],["A","1천 미만"],["B","1천 ~ 1만"],["C","1만 ~ 10만"],["D","10만 ~ 100만"],["E","100만 이상"]])+
-   '<label class="f grow" for="hotQ"><span>채널 이름 검색</span><input id="hotQ" type="search" placeholder="채널 이름, @핸들, 채널 주소" value="'+esc(st.hot.q)+'"></label>'+
+   '<label class="f grow" for="hotQ"><span>채널 이름 검색</span><input id="hotQ" type="search" placeholder="채널 이름, @핸들, 채널 링크, 영상 링크" value="'+esc(st.hot.q)+'"></label>'+
   '</div><div class="summary" id="hotSummary"></div><div id="hotList"></div>';
   curDraw=drawHot;drawHot();
 }
