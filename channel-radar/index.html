@@ -313,7 +313,7 @@ nav a .dot{display:inline-block;width:8px;height:8px;border-radius:50%;backgroun
 
 <script>
 "use strict";
-var APP_VERSION="1.3.1";
+var APP_VERSION="1.3.2";
 var WEB_URL="https://womantechcs-boop.github.io/channel-radar/";
 /* ================= 저장소 (이 컴퓨터의 브라우저에만 저장) ================= */
 var LS={
@@ -341,11 +341,32 @@ function makeClick(){
   var bin="",u=new Uint8Array(buf);for(i=0;i<u.length;i++)bin+=String.fromCharCode(u[i]);
   return "data:audio/wav;base64,"+btoa(bin);
 }
+var actx=null,clickBuf=null;
+// 소리 장치를 미리 깨워 두고 계속 열어 둔다 (짧은 소리가 장치 켜지는 사이에 잘리는 것을 막기 위해)
+function wakeAudio(){
+  try{
+    var AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
+    if(!actx){
+      actx=new AC();
+      var sr=actx.sampleRate,len=Math.floor(sr*0.16),i;clickBuf=actx.createBuffer(1,len,sr);var d=clickBuf.getChannelData(0);
+      for(i=0;i<len;i++){var t=i/sr,x=0,t2=t-0.07;
+        if(t<0.06)x+=Math.sin(2*Math.PI*1800*t)*Math.exp(-t*90)*0.9;
+        if(t2>=0)x+=Math.sin(2*Math.PI*1100*t2)*Math.exp(-t2*70)*0.85;
+        d[i]=Math.max(-1,Math.min(1,x))}
+      var keep=actx.createOscillator(),kg=actx.createGain();keep.frequency.value=30;kg.gain.value=0.0002;keep.connect(kg);kg.connect(actx.destination);keep.start();
+    }
+    if(actx.state!=="running")actx.resume();
+  }catch(e){}
+}
+function beep(){try{wakeAudio();var t=actx.currentTime+0.35,o=actx.createOscillator(),g=actx.createGain();o.frequency.value=880;g.gain.setValueAtTime(0.0001,t);g.gain.linearRampToValueAtTime(0.35,t+0.02);g.gain.setValueAtTime(0.35,t+0.5);g.gain.linearRampToValueAtTime(0.0001,t+0.6);o.connect(g);g.connect(actx.destination);o.start(t);o.stop(t+0.65)}catch(e){soundErr=String(e&&e.message||e)}}
 function clickSound(force){
   if(!SOUND&&!force)return;
+  soundErr="";
   try{
+    wakeAudio();
+    if(actx&&clickBuf&&actx.state==="running"){var src=actx.createBufferSource();src.buffer=clickBuf;src.connect(actx.destination);src.start();return}
     clickUrl=clickUrl||makeClick();
-    var a=new Audio(clickUrl);a.volume=1;soundErr="";
+    var a=new Audio(clickUrl);a.volume=1;
     var p=a.play();if(p&&p["catch"])p["catch"](function(e){soundErr=String(e&&e.message||e)});
   }catch(e){soundErr=String(e&&e.message||e)}
 }
@@ -849,7 +870,7 @@ document.addEventListener("click",function(e){
     else if(act==="fetch-ch"){var fq=st.hot.q.trim();if(fq)run("채널 불러오기",function(status){return fetchChannel(fq,status)})}
     else if(act==="browser"){BROWSER=id==="default"?"default":"chrome";LS.set("cr.browser",BROWSER);if(window.radar&&window.radar.setBrowser)window.radar.setBrowser(BROWSER);renderCollect()}
     else if(act==="sound"){SOUND=!SOUND;LS.set("cr.sound",SOUND);soundMsg="";clickSound();renderCollect()}
-    else if(act==="sound-test"){clickSound(true);setTimeout(function(){soundMsg=soundErr?"소리를 재생하지 못했습니다: "+soundErr:"소리를 재생했습니다. 들리지 않았다면 컴퓨터 스피커 음량과, 윈도우 작업 표시줄 스피커 아이콘의 '볼륨 믹서'에서 채널 레이더가 꺼져 있지 않은지 확인해 주세요.";if(cur==="collect")renderCollect()},400)}
+    else if(act==="sound-test"){clickSound(true);beep();setTimeout(function(){soundMsg=soundErr?"소리를 재생하지 못했습니다: "+soundErr:"'딸깍' 소리 뒤에 '삐-' 소리를 0.5초 동안 재생했습니다. (소리 장치 상태: "+(actx?actx.state:"없음")+") 둘 다 안 들렸다면 컴퓨터 스피커 음량과, 윈도우 작업 표시줄 스피커 아이콘의 '볼륨 믹서'에서 채널 레이더가 꺼져 있지 않은지 확인해 주세요.";if(cur==="collect")renderCollect()},1200)}
     else if(act==="check-update"){checkUpdate(false)}
     else if(act==="apply-update"){
       a.disabled=true;a.textContent="업데이트 받는 중…";
@@ -898,6 +919,7 @@ document.addEventListener("keydown",function(e){
   if(e.key==="Enter"&&e.target.id==="keyIn"){var kb=document.querySelector('[data-act="save-key"]');if(kb)kb.click();return}
   if((e.key==="Enter"||e.key===" ")&&e.target.matches&&e.target.matches("[data-kw]")){e.preventDefault();e.target.click()}
 });
+document.addEventListener("pointerdown",wakeAudio,true);
 document.addEventListener("pointerdown",function(e){if(e.target.matches&&e.target.matches("select[data-p]"))clickSound()});
 window.addEventListener("hashchange",function(){closeDrawer();route()});
 
