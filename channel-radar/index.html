@@ -313,7 +313,7 @@ nav a .dot{display:inline-block;width:8px;height:8px;border-radius:50%;backgroun
 
 <script>
 "use strict";
-var APP_VERSION="1.3.11";
+var APP_VERSION="1.3.12";
 var WEB_URL="https://womantechcs-boop.github.io/channel-radar/";
 /* ================= 저장소 (이 컴퓨터의 브라우저에만 저장) ================= */
 var LS={
@@ -326,10 +326,17 @@ var FAV=LS.get("cr.fav",{});
 var QUOTA=LS.get("cr.quota",{day:"",used:0,search:0});
 var SOUND=LS.get("cr.sound",true),BROWSER=LS.get("cr.browser","chrome"),upd=null;
 var clickUrl=null,soundErr="",soundMsg="";
-var KINDS=[["tak","딱 (낮고 짧게)"],["tok","톡 (부드럽게)"],["ddal","딸깍 (낮게 두 번)"],["ttik","띡 (높게)"]];
-var KIND=LS.get("cr.soundKind","tak");
+var KINDS=[["up","딸깍 (자동 업로더와 같은 소리)"],["tak","딱 (낮고 짧게)"],["tok","톡 (부드럽게)"],["ddal","딸깍 (낮게 두 번)"],["ttik","띡 (높게)"]];
+var KIND=LS.get("cr.soundKind2","up");
 function clickWave(sr){
-  var len=Math.floor(sr*(KIND==="ddal"?0.13:0.08)),d=new Float32Array(len),seed=12345,lp=0,i;
+  var len=Math.floor(sr*(KIND==="ddal"?0.13:KIND==="up"?0.05:0.08)),d=new Float32Array(len),seed=12345,lp=0,i;
+  if(KIND==="up"){          // 사각파 1800→600Hz, 900Hz 아래를 걸러 냄, 0.045초 만에 사라짐
+    var ph=0,hp=0,px=0,a=1/(1+2*Math.PI*900/sr);
+    for(i=0;i<len;i++){var tt=i/sr,fq=tt<0.03?1800*Math.pow(600/1800,tt/0.03):600;ph+=fq/sr;
+      var sq=(ph%1)<0.5?1:-1;hp=a*(hp+sq-px);px=sq;
+      d[i]=Math.max(-1,Math.min(1,hp*0.18*Math.pow(0.001/0.18,Math.min(1,tt/0.045))))}
+    return d;
+  }
   function hit(t,vol){                       // t초 지난 시점의 소리 한 번
     if(t<0)return 0;
     if(KIND==="ttik")return (lp*Math.exp(-t*300)*0.9+Math.sin(2*Math.PI*2600*t)*Math.exp(-t*240)*0.45)*vol;
@@ -374,6 +381,12 @@ function clickSound(force){
   soundErr="";
   try{
     wakeAudio();
+    if(KIND==="up"&&actx&&actx.state==="running"){
+      var t=actx.currentTime,o=actx.createOscillator(),g=actx.createGain(),f=actx.createBiquadFilter();
+      o.type="square";o.frequency.setValueAtTime(1800,t);o.frequency.exponentialRampToValueAtTime(600,t+0.03);
+      f.type="highpass";f.frequency.value=900;g.gain.setValueAtTime(0.18,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.045);
+      o.connect(f);f.connect(g);g.connect(actx.destination);o.start(t);o.stop(t+0.05);return;
+    }
     if(actx&&clickBuf&&actx.state==="running"){var src=actx.createBufferSource();src.buffer=clickBuf;src.connect(actx.destination);src.start();return}
     clickUrl=clickUrl||makeClick();
     var a=new Audio(clickUrl);a.volume=1;
@@ -895,7 +908,7 @@ document.addEventListener("click",function(e){
     else if(act==="fetch-ch"){var fq=st.hot.q.trim();if(fq)run("채널 불러오기",function(status){return fetchChannel(fq,status)})}
     else if(act==="browser"){BROWSER=id==="default"?"default":"chrome";LS.set("cr.browser",BROWSER);if(window.radar&&window.radar.setBrowser)window.radar.setBrowser(BROWSER);renderCollect()}
     else if(act==="sound"){SOUND=!SOUND;LS.set("cr.sound",SOUND);soundMsg="";clickSound();renderCollect()}
-    else if(act==="sound-kind"){KIND=id;LS.set("cr.soundKind",KIND);clickBuf=null;clickUrl=null;if(actx){try{var wv=clickWave(actx.sampleRate);clickBuf=actx.createBuffer(1,wv.length,actx.sampleRate);clickBuf.getChannelData(0).set(wv)}catch(e){}}clickSound(true);renderCollect()}
+    else if(act==="sound-kind"){KIND=id;LS.set("cr.soundKind2",KIND);clickBuf=null;clickUrl=null;if(actx){try{var wv=clickWave(actx.sampleRate);clickBuf=actx.createBuffer(1,wv.length,actx.sampleRate);clickBuf.getChannelData(0).set(wv)}catch(e){}}clickSound(true);renderCollect()}
     else if(act==="sound-test"){clickSound(true);setTimeout(function(){
       var okDev=actx&&actx.state==="running";
       var done=function(m){soundMsg=m;if(cur==="collect")renderCollect()};
