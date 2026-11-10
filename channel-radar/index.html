@@ -313,7 +313,7 @@ nav a .dot{display:inline-block;width:8px;height:8px;border-radius:50%;backgroun
 
 <script>
 "use strict";
-var APP_VERSION="1.2.3";
+var APP_VERSION="1.2.4";
 var WEB_URL="https://womantechcs-boop.github.io/channel-radar/";
 /* ================= 저장소 (이 컴퓨터의 브라우저에만 저장) ================= */
 var LS={
@@ -324,21 +324,30 @@ var KEY=LS.get("cr.key","");
 var DB=LS.get("cr.db",{});          // 채널 id -> 채널 기록
 var FAV=LS.get("cr.fav",{});
 var QUOTA=LS.get("cr.quota",{day:"",used:0,search:0});
-var SOUND=LS.get("cr.sound",true),actx=null,upd=null;
-function tick(t,f1,f2,len,vol){
-  var o=actx.createOscillator(),g=actx.createGain();
-  o.type="triangle";o.frequency.setValueAtTime(f1,t);o.frequency.exponentialRampToValueAtTime(f2,t+len);
-  g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(vol,t+0.003);g.gain.exponentialRampToValueAtTime(0.0001,t+len);
-  o.connect(g);g.connect(actx.destination);o.start(t);o.stop(t+len+0.02);
+var SOUND=LS.get("cr.sound",true),BROWSER=LS.get("cr.browser","chrome"),upd=null;
+var clickUrl=null,soundErr="",soundMsg="";
+// 딸깍 소리를 직접 만들어(WAV) 일반 오디오로 재생한다
+function makeClick(){
+  var sr=22050,len=Math.floor(sr*0.14),buf=new ArrayBuffer(44+len*2),v=new DataView(buf),i;
+  function w(o,str){for(var k=0;k<str.length;k++)v.setUint8(o+k,str.charCodeAt(k))}
+  w(0,"RIFF");v.setUint32(4,36+len*2,true);w(8,"WAVE");w(12,"fmt ");v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
+  v.setUint32(24,sr,true);v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,"data");v.setUint32(40,len*2,true);
+  for(i=0;i<len;i++){
+    var t=i/sr,x=0,t2=t-0.06;
+    if(t<0.05)x+=Math.sin(2*Math.PI*2300*t)*Math.exp(-t*110)*0.9;
+    if(t2>=0)x+=Math.sin(2*Math.PI*1400*t2)*Math.exp(-t2*80)*0.85;
+    v.setInt16(44+i*2,Math.round(Math.max(-1,Math.min(1,x))*32767),true);
+  }
+  var bin="",u=new Uint8Array(buf);for(i=0;i<u.length;i++)bin+=String.fromCharCode(u[i]);
+  return "data:audio/wav;base64,"+btoa(bin);
 }
-function clickSound(){
-  if(!SOUND)return;
+function clickSound(force){
+  if(!SOUND&&!force)return;
   try{
-    var AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
-    actx=actx||new AC();
-    var play=function(){var t=actx.currentTime+0.01;tick(t,2600,1300,0.035,0.5);tick(t+0.055,1700,800,0.05,0.4)};
-    if(actx.state==="running")play();else actx.resume().then(play,function(){});
-  }catch(e){}
+    clickUrl=clickUrl||makeClick();
+    var a=new Audio(clickUrl);a.volume=1;soundErr="";
+    var p=a.play();if(p&&p["catch"])p["catch"](function(e){soundErr=String(e&&e.message||e)});
+  }catch(e){soundErr=String(e&&e.message||e)}
 }
 function setTheme(t){
   t=t==="light"?"light":"dark";document.documentElement.dataset.theme=t;LS.set("cr.theme",t);
@@ -524,9 +533,12 @@ async function fetchChannel(q,status){
     var j=await api("channels",{part:"id",forHandle:h},1);
     ids=(j.items||[]).map(function(x){return x.id});
   }
+  if(!ids.length&&window.radar&&window.radar.resolve&&!/^https?:/i.test(q)){
+    try{var rr=await window.radar.resolve(q);if(rr&&rr.ok&&rr.id)ids=[rr.id]}catch(e){}
+  }
   if(!ids.length){
     bySearch=true;
-    var sj=await api("search",{part:"snippet",type:"channel",q:q.replace(/^@/,""),maxResults:5},100);
+    var sj=await api("search",{part:"snippet",type:"channel",q:q.replace(/^@/,""),maxResults:10},100);
     ids=(sj.items||[]).map(function(x){return (x.id&&x.id.channelId)||(x.snippet&&x.snippet.channelId)}).filter(Boolean);
   }
   if(!ids.length)throw new Error("유튜브에서 '"+q+"' 채널을 찾지 못했습니다. 핸들(@이름)이나 채널 주소를 다시 확인해 주세요.");
@@ -742,8 +754,9 @@ function renderCollect(){
    '<div class="chips">'+PRESETS.map(function(p){return '<button type="button" class="chip" data-chip="'+esc(p)+'">'+esc(p)+'</button>'}).join("")+'</div></div>'+
   '<div class="card panel"><h2>4. 저장된 데이터</h2><p>저장된 채널 <b>'+n+'</b>개. 프로그램을 여는 날마다 채널 조회수를 자동으로 한 번 기록해 일일 조회수를 계산합니다(채널 50개당 사용량 1).</p>'+
    '<div class="line"><button type="button" class="btn ghost" data-act="refresh-all"'+(n?"":" disabled")+'>최근 영상까지 전체 새로고침 (사용량 약 '+Math.ceil(n*1.25)+')</button><button type="button" class="btn danger" data-act="wipe"'+(n?"":" disabled")+'>즐겨찾기만 남기고 정리</button></div></div>'+
-  '<div class="card panel"><h2>5. 효과음</h2><p>분류나 정렬을 누를 때 나는 딸깍 소리입니다.</p><div class="line"><button type="button" class="btn ghost" data-act="sound">'+(SOUND?"효과음 끄기":"효과음 켜기")+'</button></div></div>'+
-  '<div class="card panel"><h2>6. 프로그램 버전·업데이트</h2>'+updateHtml()+'</div>';
+  '<div class="card panel"><h2>5. 효과음</h2><p>분류나 정렬을 누를 때 나는 딸깍 소리입니다.</p><p>지금 상태: <b>'+(SOUND?"켜짐":"꺼짐")+'</b></p><div class="line"><button type="button" class="btn ghost" data-act="sound">'+(SOUND?"효과음 끄기":"효과음 켜기")+'</button><button type="button" class="btn ghost" data-act="sound-test">소리 테스트</button></div>'+(soundMsg?'<div class="updbox">'+esc(soundMsg)+'</div>':'')+'</div>'+
+  (window.radar&&window.radar.setBrowser?'<div class="card panel"><h2>6. 유튜브 링크를 열 브라우저</h2><p>영상이나 채널을 눌렀을 때 열리는 브라우저입니다. 크롬을 고르면 크롬이 깔려 있을 때 크롬으로, 없으면 윈도우 기본 브라우저로 엽니다.</p><p>지금 상태: <b>'+(BROWSER==="default"?"윈도우 기본 브라우저":"크롬")+'</b></p><div class="line"><button type="button" class="btn ghost" data-act="browser" data-id="chrome">크롬으로 열기</button><button type="button" class="btn ghost" data-act="browser" data-id="default">윈도우 기본 브라우저로 열기</button></div></div>':'')+
+  '<div class="card panel"><h2>'+(window.radar&&window.radar.setBrowser?7:6)+'. 프로그램 버전·업데이트</h2>'+updateHtml()+'</div>';
 }
 
 var ROUTES={hot:renderHot,ranking:renderRanking,keywords:renderKeywords,videos:renderVideos,favorites:renderFavorites,collect:renderCollect};
@@ -794,7 +807,9 @@ document.addEventListener("click",function(e){
     var act=a.dataset.act,id=a.dataset.id;
     if(act==="err-close")showError("");
     else if(act==="fetch-ch"){var fq=st.hot.q.trim();if(fq)run("채널 불러오기",function(status){return fetchChannel(fq,status)})}
-    else if(act==="sound"){SOUND=!SOUND;LS.set("cr.sound",SOUND);clickSound();renderCollect()}
+    else if(act==="browser"){BROWSER=id==="default"?"default":"chrome";LS.set("cr.browser",BROWSER);if(window.radar&&window.radar.setBrowser)window.radar.setBrowser(BROWSER);renderCollect()}
+    else if(act==="sound"){SOUND=!SOUND;LS.set("cr.sound",SOUND);soundMsg="";clickSound();renderCollect()}
+    else if(act==="sound-test"){clickSound(true);setTimeout(function(){soundMsg=soundErr?"소리를 재생하지 못했습니다: "+soundErr:"소리를 재생했습니다. 들리지 않았다면 컴퓨터 스피커 음량과, 윈도우 작업 표시줄 스피커 아이콘의 '볼륨 믹서'에서 채널 레이더가 꺼져 있지 않은지 확인해 주세요.";if(cur==="collect")renderCollect()},400)}
     else if(act==="check-update"){checkUpdate(false)}
     else if(act==="apply-update"){
       a.disabled=true;a.textContent="업데이트 받는 중…";
@@ -848,7 +863,7 @@ window.addEventListener("hashchange",function(){closeDrawer();route()});
 
 $("#verTag").textContent="v"+APP_VERSION;
 rebuild();saveFav();drawQuota();setTheme(document.documentElement.dataset.theme);route();autoStats();
-if(window.radar){try{window.radar.ready()}catch(e){}checkUpdate(true)}
+if(window.radar){try{window.radar.ready();if(window.radar.setBrowser)window.radar.setBrowser(BROWSER)}catch(e){}checkUpdate(true)}
 </script>
 </body>
 </html>

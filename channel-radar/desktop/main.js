@@ -1,5 +1,6 @@
 const {app,BrowserWindow,shell,Menu,ipcMain,net}=require('electron');
 const path=require('path'),fs=require('fs'),crypto=require('crypto');
+const {spawn}=require('child_process');
 
 // 새 버전을 받아 오는 곳 (깃허브 공개 저장소)
 const BASE=process.env.RADAR_UPDATE_BASE||'https://raw.githubusercontent.com/womantechcs-boop/womantechcs-boop.github.io/main/channel-radar/';
@@ -19,7 +20,20 @@ async function get(url){
 
 if(!app.requestSingleInstanceLock()){app.quit()}
 let win=null,readyTimer=null;
-function openOutside(url){if(/^https:\/\//i.test(url))shell.openExternal(url)}
+let browserPref='chrome';
+// 크롬이 깔려 있으면 크롬으로, 없으면 윈도우 기본 브라우저로 연다
+function chromePath(){
+  if(process.platform!=='win32')return null;
+  const dirs=[process.env['PROGRAMFILES'],process.env['PROGRAMFILES(X86)'],process.env['LOCALAPPDATA']].filter(Boolean);
+  for(const d of dirs){const f=path.join(d,'Google','Chrome','Application','chrome.exe');try{if(fs.existsSync(f))return f}catch(e){}}
+  return null;
+}
+function openOutside(url){
+  if(!/^https:\/\//i.test(url))return;
+  const cp=browserPref==='chrome'?chromePath():null;
+  if(cp){try{spawn(cp,[url],{detached:true,stdio:'ignore'}).unref();return}catch(e){}}
+  shell.openExternal(url);
+}
 function load(){
   const p=pick();
   clearTimeout(readyTimer);
@@ -47,11 +61,24 @@ function create(){
   win.on('closed',()=>{win=null;clearTimeout(readyTimer)});
 }
 
+ipcMain.on('radar:browser',(e,v)=>{browserPref=v==='default'?'default':'chrome'});
 ipcMain.on('radar:ready',()=>{clearTimeout(readyTimer)});
 ipcMain.handle('radar:check',async(e,cur)=>{
   try{const j=await (await get(BASE+'latest.json')).json();
     return {ok:true,current:cur,latest:String(j.version),newer:cmp(j.version,cur)>0,notes:String(j.notes||'')}}
   catch(err){return {ok:false,error:String(err&&err.message||err)}}
+});
+// @한글핸들처럼 API가 못 찾는 주소는 유튜브 채널 페이지를 한 번 열어 채널 번호를 확인한다
+ipcMain.handle('radar:resolve',async(e,q)=>{
+  try{
+    const h=String(q||'').trim().replace(/^@/,'');
+    if(!h||h.length>60||/[\/\s?#&]/.test(h))return {ok:false};
+    const r=await net.fetch('https://www.youtube.com/@'+encodeURIComponent(h),{headers:{'accept-language':'ko,en;q=0.8'}});
+    if(!r.ok)return {ok:false};
+    const t=await r.text();
+    const m=/<link rel="canonical" href="https:\/\/www\.youtube\.com\/channel\/(UC[\w-]{22})"/.exec(t)||/"externalId":"(UC[\w-]{22})"/.exec(t)||/<meta itemprop="(?:channelId|identifier)" content="(UC[\w-]{22})"/.exec(t);
+    return m?{ok:true,id:m[1]}:{ok:false};
+  }catch(err){return {ok:false}}
 });
 ipcMain.handle('radar:apply',async()=>{
   try{
