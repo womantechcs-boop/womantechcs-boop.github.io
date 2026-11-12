@@ -325,7 +325,7 @@ nav a .dot{display:inline-block;width:8px;height:8px;border-radius:50%;backgroun
 
 <script>
 "use strict";
-var APP_VERSION="1.4.0";
+var APP_VERSION="1.5.0";
 var WEB_URL="https://womantechcs-boop.github.io/channel-radar/";
 /* ================= 저장소 (이 컴퓨터의 브라우저에만 저장) ================= */
 var LS={
@@ -981,6 +981,63 @@ function route(){
 
 /* ================= 채널 상세 ================= */
 var drawer=$("#drawer"),shade=$("#shade"),openId=null;
+/* ================= 유사 채널 ================= */
+// 채널의 최근 영상 제목에서 뽑은 단어 묶음 (단어 -> 나온 횟수)
+function chTokens(c){var m={};(c.vids||[]).forEach(function(v){tokens(v.t).forEach(function(w){m[w]=(m[w]||0)+1})});return m}
+function topWords(c,n){
+  var m=chTokens(c),ks=Object.keys(m).sort(function(a,b){return m[b]-m[a]||b.length-a.length});
+  return ks.slice(0,n);
+}
+function similarTo(id){
+  var t=DB[id];if(!t)return [];
+  var tm=met(id),tw=chTokens(t),tk=Object.keys(tw),tn=0;tk.forEach(function(w){tn+=tw[w]*tw[w]});
+  var out=[];
+  channels().forEach(function(c){
+    if(c.id===id)return;
+    var m=met(c.id),cw=chTokens(c),dot=0,cn=0,common=[];
+    Object.keys(cw).forEach(function(w){cn+=cw[w]*cw[w];if(tw[w]){dot+=tw[w]*cw[w];common.push(w)}});
+    var score=(tn&&cn)?dot/Math.sqrt(tn*cn):0;                 // 제목 단어가 얼마나 겹치는지 (0~1)
+    if(m.lang!==tm.lang)score*=0.2;                            // 언어가 다르면 크게 깎음
+    if(score>0&&m.cat===tm.cat)score+=0.1;
+    if(score>0&&m.form&&m.form===tm.form)score+=0.05;
+    if(score>0)out.push({c:c,score:score,common:common.sort(function(a,b){return tw[b]-tw[a]}).slice(0,4)});
+  });
+  out.sort(function(a,b){return b.score-a.score});
+  if(out.length<8){                                             // 겹치는 단어가 적으면 같은 분류·언어·형식 채널로 채움
+    var have={};out.forEach(function(x){have[x.c.id]=1});
+    channels().filter(function(c){var m=met(c.id);return c.id!==id&&!have[c.id]&&m.cat===tm.cat&&m.lang===tm.lang&&(!tm.form||m.form===tm.form)})
+      .sort(function(a,b){return Math.abs(Math.log((a.subs||1)/(t.subs||1)))-Math.abs(Math.log((b.subs||1)/(t.subs||1)))})
+      .slice(0,8-out.length).forEach(function(c){out.push({c:c,score:0,common:[]})});
+  }
+  return out.slice(0,25);
+}
+function openSimilar(id){
+  var c=DB[id];if(!c)return;openId=id;
+  var list=similarTo(id),words=topWords(c,3),m=met(id);
+  drawer.innerHTML='<div class="head">'+avatar(c)+'<div><h3>'+esc(c.name)+'</h3><div class="meta">이 채널과 비슷한 채널</div></div><button class="x" type="button" data-act="close">닫기</button></div>'+
+   '<button type="button" class="btn ghost block" data-act="sim-back" data-id="'+esc(id)+'">← 채널 정보로 돌아가기</button>'+
+   '<p class="lead" style="margin:14px 0 10px">수집해 둔 채널 가운데 최근 영상 제목의 단어가 많이 겹치고, 언어·분류·형식이 같은 채널을 먼저 보여 줍니다.</p>'+
+   (list.length?list.map(function(x){var o=x.c,om=met(o.id);
+     return '<div class="krow" data-ch="'+esc(o.id)+'">'+avatar(o)+'<div class="kn"><b>'+esc(o.name)+'</b><small>'+(x.common.length?'겹치는 단어: '+esc(x.common.join(", ")):'같은 분류·언어')+' · '+esc(om.cat)+'</small></div>'+pill(om.ratio)+'<span class="g">구독자 '+(o.subs==null?"비공개":fmt(o.subs))+'</span></div>'}).join("")
+     :'<div class="card empty">수집해 둔 채널 중에는 비슷한 채널이 아직 없습니다.</div>')+
+   (words.length?'<div class="updbox" style="margin-top:14px"><b>유튜브에서 더 찾기</b><br>이 채널이 자주 쓰는 단어 <b>'+esc(words.join(" · "))+'</b>(으)로 유튜브를 검색해, 비슷한 영상을 올리는 채널을 새로 가져옵니다. 키워드 검색 1회와 사용량 60 정도가 듭니다.</div>'+
+     '<button type="button" class="btn block" data-act="sim-more" data-id="'+esc(id)+'">유튜브에서 비슷한 채널 더 가져오기</button>':'');
+  drawer.classList.add("open");shade.classList.add("open");drawer.scrollTop=0;
+}
+async function fetchSimilar(id,status){
+  var c=DB[id],words=topWords(c,3),m=met(id);
+  if(!words.length)throw new Error("이 채널은 받아 온 영상 제목이 없어 비슷한 채널을 검색할 수 없습니다. 먼저 '이 채널 새로고침'을 눌러 주세요.");
+  status("'"+words.join(" ")+"' 검색 중");
+  var p={part:"snippet",type:"video",q:words.join(" "),order:"relevance",publishedAfter:new Date(Date.now()-180*DAY).toISOString(),maxResults:50};
+  var lg={ko:"ko",ja:"ja",en:"en",zh:"zh-Hant",ru:"ru",ar:"ar",th:"th",hi:"hi"}[m.lang];if(lg)p.relevanceLanguage=lg;
+  if(c.country&&REGIONS.some(function(r){return r[0]===c.country}))p.regionCode=c.country;
+  var j=await api("search",p,100),ids={};
+  (j.items||[]).forEach(function(it){var ch=it.snippet&&it.snippet.channelId;if(ch&&ch!==id)ids[ch]=1});
+  var all=Object.keys(ids),fresh=all.filter(function(x){return !DB[x]}).length;
+  if(!all.length)throw new Error("유튜브에서 비슷한 영상을 찾지 못했습니다.");
+  await loadChannels(all,{region:c.country,skipRecent:true},status);
+  return "채널 "+all.length+"개 (새 채널 "+fresh+"개)";
+}
 function openDrawer(id){
   var c=DB[id];if(!c)return;openId=id;var m=met(id);
   drawer.innerHTML='<div class="head">'+avatar(c)+'<div><h3>'+esc(c.name)+'</h3><div class="meta">'+esc(c.handle)+' · '+esc(cname(c.country))+' · '+esc(m.cat)+'</div></div><button class="x" type="button" data-act="close">닫기</button></div>'+
@@ -988,6 +1045,7 @@ function openDrawer(id){
    '<div class="stat"><span>구독자</span><b>'+(c.subs==null?"비공개":fmt(c.subs))+'</b></div><div class="stat"><span>최근 영상 평균 조회수</span><b>'+fmt(m.avg)+'</b></div>'+
    '<div class="stat"><span>전체 조회수</span><b>'+fmt(c.views)+'</b></div><div class="stat"><span>영상 수 · 개설</span><b style="font-size:15px">'+fmt(c.videoCount)+'개 · '+age(c.created)+'</b></div></div>'+
    '<a class="btn yt block" href="'+churl(c)+'" target="_blank" rel="noopener">유튜브에서 채널 열기</a>'+
+   '<button type="button" class="btn block" data-act="similar" data-id="'+esc(id)+'">이 채널과 비슷한 채널 찾기</button>'+
    '<button type="button" class="btn ghost block" data-act="fav" data-id="'+esc(id)+'">'+(FAV[id]?"즐겨찾기에서 빼기":"즐겨찾기에 추가")+'</button>'+
    '<h2 style="margin-top:20px">최근 영상</h2>'+
    (m.vids.length?m.vids.map(function(v){return '<a class="rv" href="'+vurl(v)+'" target="_blank" rel="noopener"><img src="'+vthumb(v)+'" alt="" loading="lazy"><span><b>'+esc(v.t)+'</b><small>'+(v.d>0&&v.d<=60?"쇼츠":"롱폼")+' · 조회수 '+fmt(v.v)+' · '+ago(v.p)+'</small></span></a>'}).join(""):'<p class="lead">받아 온 영상이 없습니다.</p>')+
@@ -1058,6 +1116,9 @@ document.addEventListener("click",function(e){
       run("'"+q+"' 채널 찾기",function(status){return collectKeyword(q,kr,kd,status)});
     }
     else if(act==="refresh-all"){var all=Object.keys(DB);run("전체 새로고침",function(status){return loadChannels(all,{},status).then(function(){return all.length})})}
+    else if(act==="similar"){clickSound();openSimilar(id)}
+    else if(act==="sim-back"){clickSound();openDrawer(id)}
+    else if(act==="sim-more"){run("비슷한 채널 가져오기",function(status){return fetchSimilar(id,status)}).then(function(){if(DB[id])openSimilar(id)})}
     else if(act==="refresh-one"){run("채널 새로고침",function(status){return loadChannels([id],{},status).then(function(){})}).then(function(){if(DB[id])openDrawer(id)})}
     else if(act==="delete-one"){if(!confirmTwice(a,"정말 지울까요? 한 번 더 누르세요"))return;armed=null;delete DB[id];delete FAV[id];rebuild();saveDB();saveFav();closeDrawer();route()}
     else if(act==="wipe"){if(!confirmTwice(a,"정말 정리할까요? 한 번 더 누르세요"))return;armed=null;Object.keys(DB).forEach(function(k){if(!FAV[k])delete DB[k]});rebuild();saveDB();toast("즐겨찾기 외 채널을 정리했습니다.");route()}

@@ -1,6 +1,6 @@
 {
-  "version": "1.4.0",
+  "version": "1.5.0",
   "url": "index.html",
-  "sha256": "bff6bd64a1426debd4207e6b8cef781e8cfc3fa0d192412156c64ad81ea9b1d1",
-  "notes": "HOT 채널 찾기에 고급 필터 추가(구독자·평균 조회수·영상 수·주당 업로드·배수 범위, 언어, 마지막 업로드, 채널 개설, 자주 쓰는 조합)"
+  "sha256": "2a21b7ba9b7108aaca7beeb6fd3ee19c4fe837dfa382044adb6fec3579df6ad4",
+  "notes": "채널 상세에 '이 채널과 비슷한 채널 찾기' 추가(수집한 채널에서 찾기 + 유튜브에서 더 가져오기)"
 }
